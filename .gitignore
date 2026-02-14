@@ -1,0 +1,9 @@
+.idea
+.venv
+.ipynb_checkpoints
+__pycache__
+**/.env
+.env
+/CLAUDE.md
+/PLAN.md
+examples/

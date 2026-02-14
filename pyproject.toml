@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apache-airflow-provider-rmq"
+version = "1.0.0"
+description = "RabbitMQ provider for Apache Airflow with hooks, operators, sensors, and deferrable trigger support."
+readme = "readme.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+classifiers = [
+    "Environment :: Console",
+    "Framework :: Apache Airflow",
+    "Framework :: Apache Airflow :: Provider",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Distributed Computing",
+]
+dependencies = [
+    "apache-airflow>=2.9.0",
+    "pika>=1.3.0,<2.0.0",
+    "aio-pika>=9.0.0,<10.0.0",
+    "tenacity>=8.0.0,<9.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-mock>=3.10",
+    "ruff>=0.1.0",
+    "mypy>=1.5",
+]
+
+[project.entry-points."apache_airflow_provider"]
+provider_info = "apache_airflow_provider_rmq.__init__:get_provider_info"
+
+[tool.setuptools.packages.find]
+include = ["apache_airflow_provider_rmq*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
