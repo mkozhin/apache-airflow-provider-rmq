@@ -1,0 +1,33 @@
+Metadata-Version: 2.4
+Name: apache-airflow-provider-rmq
+Version: 1.0.0
+Summary: RabbitMQ provider for Apache Airflow with hooks, operators, sensors, and deferrable trigger support.
+License: Apache-2.0
+Classifier: Environment :: Console
+Classifier: Framework :: Apache Airflow
+Classifier: Framework :: Apache Airflow :: Provider
+Classifier: Operating System :: OS Independent
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: System :: Distributed Computing
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: apache-airflow>=2.9.0
+Requires-Dist: pika<2.0.0,>=1.3.0
+Requires-Dist: aio-pika<10.0.0,>=9.0.0
+Requires-Dist: tenacity<9.0.0,>=8.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21; extra == "dev"
+Requires-Dist: pytest-mock>=3.10; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Requires-Dist: mypy>=1.5; extra == "dev"
+Dynamic: license-file
+
+# Apache Airflow RMQ Provider
+
+Попробуем создать свой провайдер для Apache Airflow, который будет взаимодействовать с RabbitMQ. Этот провайдер будет включать в себя оператор для отправки сообщений в очередь RabbitMQ и сенсор для проверки наличия сообщений в очереди.
