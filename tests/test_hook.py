@@ -103,7 +103,7 @@ class TestSSLParams:
             })
         )
         with patch.object(RMQHook, "get_connection", return_value=conn):
-            with patch(f"{HOOK_MODULE}.ssl.create_default_context") as mock_ctx:
+            with patch("apache_airflow_provider_rmq.utils.ssl.ssl.create_default_context") as mock_ctx:
                 ctx_instance = MagicMock(spec=ssl.SSLContext)
                 mock_ctx.return_value = ctx_instance
                 hook = RMQHook()
@@ -410,3 +410,38 @@ class TestQueueInfoChannelClosed:
         }
         # Channel should be reset
         assert hook._channel is None
+
+
+# ---------------------------------------------------------------------------
+# test_connection
+# ---------------------------------------------------------------------------
+class TestTestConnection:
+    def test_success(self, fake_connection, mock_connection):
+        with patch.object(RMQHook, "get_connection", return_value=fake_connection):
+            with patch(f"{HOOK_MODULE}.pika.BlockingConnection", return_value=mock_connection):
+                hook = RMQHook()
+                ok, msg = hook.test_connection()
+                assert ok is True
+                assert msg == "Connection successfully tested"
+                mock_connection.close.assert_called_once()
+
+    def test_failure(self, fake_connection):
+        with patch.object(RMQHook, "get_connection", return_value=fake_connection):
+            with patch(
+                f"{HOOK_MODULE}.pika.BlockingConnection",
+                side_effect=pika.exceptions.AMQPConnectionError("refused"),
+            ):
+                hook = RMQHook(retry_count=1)
+                ok, msg = hook.test_connection()
+                assert ok is False
+                assert "refused" in msg
+
+
+# ---------------------------------------------------------------------------
+# get_connection_form_widgets
+# ---------------------------------------------------------------------------
+class TestConnectionFormWidgets:
+    def test_returns_dict_with_expected_keys(self):
+        widgets = RMQHook.get_connection_form_widgets()
+        assert isinstance(widgets, dict)
+        assert set(widgets.keys()) == {"ssl_enabled", "ca_certs", "certfile", "keyfile"}

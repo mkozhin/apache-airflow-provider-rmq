@@ -34,14 +34,14 @@ def mock_hook():
 class TestPokeEmpty:
     def test_empty_queue_returns_false(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 0, "exists": True}
+        hook.consume_messages.return_value = []
         sensor = RMQSensor(task_id="t", queue_name="q", poke_interval=1)
         result = sensor.poke(context={})
         assert result is False
 
     def test_nonexistent_queue_returns_false(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 0, "exists": False}
+        hook.consume_messages.return_value = []
         sensor = RMQSensor(task_id="t", queue_name="q", poke_interval=1)
         result = sensor.poke(context={})
         assert result is False
@@ -53,7 +53,6 @@ class TestPokeEmpty:
 class TestPokeNoFilter:
     def test_first_message_matches(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 1, "exists": True}
         hook.consume_messages.return_value = [
             _make_raw_msg(body="hello", delivery_tag=1, headers={"x": "y"}),
         ]
@@ -70,7 +69,6 @@ class TestPokeNoFilter:
 
     def test_remaining_messages_nacked(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 3, "exists": True}
         hook.consume_messages.return_value = [
             _make_raw_msg(body="a", delivery_tag=1),
             _make_raw_msg(body="b", delivery_tag=2),
@@ -92,7 +90,6 @@ class TestPokeNoFilter:
 class TestPokeDictFilter:
     def test_matching_message(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 2, "exists": True}
         hook.consume_messages.return_value = [
             _make_raw_msg(body="a", delivery_tag=1, headers={"x-type": "invoice"}),
             _make_raw_msg(body="b", delivery_tag=2, headers={"x-type": "order"}),
@@ -110,7 +107,6 @@ class TestPokeDictFilter:
 
     def test_no_matching_message(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 2, "exists": True}
         hook.consume_messages.return_value = [
             _make_raw_msg(body="a", delivery_tag=1, headers={"x-type": "invoice"}),
             _make_raw_msg(body="b", delivery_tag=2, headers={"x-type": "invoice"}),
@@ -126,7 +122,6 @@ class TestPokeDictFilter:
 
     def test_body_filter(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 2, "exists": True}
         hook.consume_messages.return_value = [
             _make_raw_msg(body=json.dumps({"status": "pending"}), delivery_tag=1),
             _make_raw_msg(body=json.dumps({"status": "ready"}), delivery_tag=2),
@@ -146,7 +141,6 @@ class TestPokeDictFilter:
 class TestPokeCallableFilter:
     def test_callable_matching(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 2, "exists": True}
         hook.consume_messages.return_value = [
             _make_raw_msg(body="skip", delivery_tag=1),
             _make_raw_msg(body="important", delivery_tag=2),
@@ -168,14 +162,14 @@ class TestPokeCallableFilter:
 class TestPokeHookClose:
     def test_hook_closed_after_poke(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 0, "exists": True}
+        hook.consume_messages.return_value = []
         sensor = RMQSensor(task_id="t", queue_name="q", poke_interval=1)
         sensor.poke(context={})
         hook.close.assert_called_once()
 
     def test_hook_closed_on_exception(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.side_effect = RuntimeError("boom")
+        hook.consume_messages.side_effect = RuntimeError("boom")
         sensor = RMQSensor(task_id="t", queue_name="q", poke_interval=1)
         with pytest.raises(RuntimeError):
             sensor.poke(context={})
@@ -188,7 +182,6 @@ class TestPokeHookClose:
 class TestExecute:
     def test_execute_poke_returns_value(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 1, "exists": True}
         hook.consume_messages.return_value = [
             _make_raw_msg(body="result", delivery_tag=1, headers={"k": "v"}),
         ]

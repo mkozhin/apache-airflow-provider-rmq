@@ -50,6 +50,37 @@ class RMQQueueManagementOperator(BaseOperator):
         source_exchange: str | None = None,
         **kwargs,
     ):
+        """Create a new RMQQueueManagementOperator.
+
+        :param action: Management action to perform (e.g., ``declare_queue``, ``delete_exchange``).
+        :type action: str
+        :param rmq_conn_id: Airflow connection ID for RabbitMQ.
+        :type rmq_conn_id: str
+        :param queue_name: Queue name (required for queue actions).
+        :type queue_name: str | None
+        :param durable: Resource survives broker restart.
+        :type durable: bool
+        :param exclusive: Queue is exclusive to the connection.
+        :type exclusive: bool
+        :param auto_delete: Resource is deleted when no longer in use.
+        :type auto_delete: bool
+        :param exchange_name: Exchange name (required for exchange actions).
+        :type exchange_name: str | None
+        :param exchange_type: Exchange type (``direct``, ``fanout``, ``topic``, ``headers``).
+        :type exchange_type: str
+        :param internal: Exchange cannot be published to directly.
+        :type internal: bool
+        :param if_unused: Only delete if resource has no consumers/bindings.
+        :type if_unused: bool
+        :param if_empty: Only delete queue if it is empty.
+        :type if_empty: bool
+        :param routing_key: Routing key for bind/unbind actions.
+        :type routing_key: str
+        :param arguments: Optional ``x-*`` arguments.
+        :type arguments: dict | None
+        :param source_exchange: Source exchange for exchange bind/unbind.
+        :type source_exchange: str | None
+        """
         super().__init__(**kwargs)
         if action not in VALID_ACTIONS:
             raise ValueError(f"Invalid action '{action}'. Must be one of {VALID_ACTIONS}")

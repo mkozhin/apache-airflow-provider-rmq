@@ -42,6 +42,35 @@ class RMQPublishOperator(BaseOperator):
         message_id: str | None = None,
         **kwargs,
     ):
+        """Create a new RMQPublishOperator.
+
+        :param rmq_conn_id: Airflow connection ID for RabbitMQ.
+        :type rmq_conn_id: str
+        :param exchange: Exchange to publish to (empty string for default exchange).
+        :type exchange: str
+        :param routing_key: Routing key for the message.
+        :type routing_key: str
+        :param message: Message payload — string, dict, or list thereof. Dicts are JSON-serialized.
+        :type message: str | list[str] | dict | list[dict] | None
+        :param queue_name: Shortcut — sets ``exchange=""`` and ``routing_key=queue_name``.
+        :type queue_name: str | None
+        :param content_type: AMQP content type header.
+        :type content_type: str | None
+        :param delivery_mode: ``1`` for non-persistent, ``2`` for persistent.
+        :type delivery_mode: int | None
+        :param headers: Custom AMQP headers.
+        :type headers: dict | None
+        :param priority: Message priority (0–9).
+        :type priority: int | None
+        :param expiration: Per-message TTL in milliseconds (as string).
+        :type expiration: str | None
+        :param correlation_id: Application correlation identifier.
+        :type correlation_id: str | None
+        :param reply_to: Reply-to queue name.
+        :type reply_to: str | None
+        :param message_id: Application message identifier.
+        :type message_id: str | None
+        """
         super().__init__(**kwargs)
         self.rmq_conn_id = rmq_conn_id
         if queue_name:
@@ -89,7 +118,11 @@ class RMQPublishOperator(BaseOperator):
                 )
 
     def _normalize_messages(self) -> list[str]:
-        """Convert message input to a list of string payloads."""
+        """Convert message input to a list of string payloads.
+
+        :return: List of string-encoded messages ready for publishing.
+        :rtype: list[str]
+        """
         if self.message is None:
             return []
         if isinstance(self.message, list):

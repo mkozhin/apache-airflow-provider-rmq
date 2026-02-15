@@ -32,6 +32,21 @@ class RMQConsumeOperator(BaseOperator):
         qos: dict | None = None,
         **kwargs,
     ):
+        """Create a new RMQConsumeOperator.
+
+        :param queue_name: Name of the RabbitMQ queue to consume from.
+        :type queue_name: str
+        :param rmq_conn_id: Airflow connection ID for RabbitMQ.
+        :type rmq_conn_id: str
+        :param max_messages: Maximum number of messages to consume per execution.
+        :type max_messages: int
+        :param filter_headers: Dict of AMQP headers that a message must match.
+        :type filter_headers: dict[str, Any] | None
+        :param filter_callable: Callable ``(properties, body) -> bool`` for custom filtering.
+        :type filter_callable: Callable[[Any, str], bool] | None
+        :param qos: QoS settings dict (``prefetch_size``, ``prefetch_count``, ``global_qos``).
+        :type qos: dict | None
+        """
         super().__init__(**kwargs)
         self.queue_name = queue_name
         self.rmq_conn_id = rmq_conn_id
@@ -49,23 +64,17 @@ class RMQConsumeOperator(BaseOperator):
         matched_messages: list[dict[str, Any]] = []
 
         with RMQHook(rmq_conn_id=self.rmq_conn_id, qos=self.qos) as hook:
-            info = hook.queue_info(self.queue_name)
-            total_available = info.get("message_count", 0)
-            if total_available == 0:
-                log.info("Queue '%s' is empty.", self.queue_name)
-                return []
-
             raw_messages = hook.consume_messages(
                 queue_name=self.queue_name,
-                max_messages=total_available,
+                max_messages=self.max_messages,
                 auto_ack=False,
             )
 
-            for msg in raw_messages:
-                if len(matched_messages) >= self.max_messages:
-                    hook.nack(msg["method"].delivery_tag, requeue=True)
-                    continue
+            if not raw_messages:
+                log.info("Queue '%s' is empty.", self.queue_name)
+                return []
 
+            for msg in raw_messages:
                 if msg_filter.matches(msg["properties"], msg["body"]):
                     hook.ack(msg["method"].delivery_tag)
                     matched_messages.append({

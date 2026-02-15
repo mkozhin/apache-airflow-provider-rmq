@@ -13,4 +13,5 @@ def get_provider_info():
             }
         ],
         "versions": [__version__],
+        "extra-links": [],
     }

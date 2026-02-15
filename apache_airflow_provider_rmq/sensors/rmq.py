@@ -16,6 +16,11 @@ class RMQSensor(BaseSensorOperator):
 
     Supports classic poke mode and deferrable mode (via RMQTrigger).
     Matching message is returned via XCom. Non-matching messages are NACKed with requeue.
+
+    .. note::
+        ``filter_callable`` is **not supported** in deferrable mode (``deferrable=True``)
+        because callables cannot be serialized to the triggerer process. Use dict-based
+        ``filter_headers`` instead, or set ``deferrable=False``.
     """
 
     template_fields: Sequence[str] = ("queue_name",)
@@ -31,6 +36,20 @@ class RMQSensor(BaseSensorOperator):
         deferrable: bool = False,
         **kwargs,
     ):
+        """Create a new RMQSensor.
+
+        :param queue_name: Name of the RabbitMQ queue to monitor.
+        :type queue_name: str
+        :param rmq_conn_id: Airflow connection ID for RabbitMQ.
+        :type rmq_conn_id: str
+        :param filter_headers: Dict of AMQP headers that a message must match.
+        :type filter_headers: dict[str, Any] | None
+        :param filter_callable: Callable ``(properties, body) -> bool`` for custom filtering.
+            Not supported with ``deferrable=True``.
+        :type filter_callable: Callable[[Any, str], bool] | None
+        :param deferrable: Run in deferrable mode using :class:`RMQTrigger`.
+        :type deferrable: bool
+        """
         super().__init__(**kwargs)
         self.queue_name = queue_name
         self.rmq_conn_id = rmq_conn_id
@@ -78,17 +97,18 @@ class RMQSensor(BaseSensorOperator):
             filter_callable=self.filter_callable,
         )
 
+        _POKE_BATCH_SIZE = 100
+
         hook = RMQHook(rmq_conn_id=self.rmq_conn_id)
         try:
-            info = hook.queue_info(self.queue_name)
-            if not info.get("exists") or info.get("message_count", 0) == 0:
-                return False
-
             messages = hook.consume_messages(
                 queue_name=self.queue_name,
-                max_messages=info["message_count"],
+                max_messages=_POKE_BATCH_SIZE,
                 auto_ack=False,
             )
+
+            if not messages:
+                return False
 
             for i, msg in enumerate(messages):
                 if msg_filter.matches(msg["properties"], msg["body"]):

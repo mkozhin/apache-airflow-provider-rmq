@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import ssl as ssl_module
 from typing import Any, AsyncIterator
 from urllib.parse import quote
 
@@ -40,6 +39,17 @@ class RMQTrigger(BaseTrigger):
         filter_data: dict[str, Any] | None = None,
         poll_interval: float = 5.0,
     ):
+        """Create a new RMQTrigger.
+
+        :param rmq_conn_id: Airflow connection ID for RabbitMQ.
+        :type rmq_conn_id: str
+        :param queue_name: Name of the RabbitMQ queue to poll.
+        :type queue_name: str
+        :param filter_data: Serialized filter data from :meth:`MessageFilter.serialize`.
+        :type filter_data: dict[str, Any] | None
+        :param poll_interval: Seconds between poll attempts when no message is available.
+        :type poll_interval: float
+        """
         super().__init__()
         self.rmq_conn_id = rmq_conn_id
         self.queue_name = queue_name
@@ -57,30 +67,6 @@ class RMQTrigger(BaseTrigger):
             },
         )
 
-    def _build_ssl_context(self, extras: dict[str, Any]) -> ssl_module.SSLContext | None:
-        """Build SSLContext from Airflow connection extras, matching hook's SSL logic."""
-        if not extras.get("ssl_enabled", False):
-            return None
-
-        ssl_context = ssl_module.create_default_context()
-        ssl_opts_raw = extras.get("ssl_options", {})
-        if isinstance(ssl_opts_raw, str):
-            import json
-            ssl_opts_raw = json.loads(ssl_opts_raw)
-
-        if ssl_opts_raw.get("ca_certs"):
-            ssl_context.load_verify_locations(ssl_opts_raw["ca_certs"])
-        if ssl_opts_raw.get("certfile") and ssl_opts_raw.get("keyfile"):
-            ssl_context.load_cert_chain(
-                certfile=ssl_opts_raw["certfile"],
-                keyfile=ssl_opts_raw["keyfile"],
-            )
-        if ssl_opts_raw.get("cert_reqs") == "CERT_NONE":
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl_module.CERT_NONE
-
-        return ssl_context
-
     async def run(self) -> AsyncIterator[TriggerEvent]:
         """Main trigger loop. Polls RabbitMQ asynchronously."""
         msg_filter = MessageFilter.deserialize(self.filter_data)
@@ -90,10 +76,10 @@ class RMQTrigger(BaseTrigger):
                 None, BaseHook.get_connection, self.rmq_conn_id
             )
             extras = conn_info.extra_dejson
-            ssl_enabled = extras.get("ssl_enabled", False)
-            ssl_context = self._build_ssl_context(extras)
+            from apache_airflow_provider_rmq.utils.ssl import build_ssl_context
+            ssl_context = build_ssl_context(extras)
             vhost = conn_info.schema or "/"
-            port = conn_info.port if conn_info.port else (5671 if ssl_enabled else 5672)
+            port = conn_info.port if conn_info.port else (5671 if ssl_context else 5672)
 
             # URL-encode all components
             vhost_encoded = quote(vhost, safe="")
@@ -101,7 +87,7 @@ class RMQTrigger(BaseTrigger):
             password_encoded = quote(conn_info.password or "guest", safe="")
 
             url = (
-                f"{'amqps' if ssl_enabled else 'amqp'}://"
+                f"{'amqps' if ssl_context else 'amqp'}://"
                 f"{login_encoded}:{password_encoded}"
                 f"@{conn_info.host or 'localhost'}:{port}/{vhost_encoded}"
             )

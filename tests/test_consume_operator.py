@@ -33,15 +33,14 @@ def mock_hook():
 class TestEmptyQueue:
     def test_returns_empty_list(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 0, "exists": True}
+        hook.consume_messages.return_value = []
         op = RMQConsumeOperator(task_id="t", queue_name="q")
         result = op.execute(context={})
         assert result == []
-        hook.consume_messages.assert_not_called()
 
     def test_nonexistent_queue(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 0, "exists": False}
+        hook.consume_messages.return_value = []
         op = RMQConsumeOperator(task_id="t", queue_name="q")
         result = op.execute(context={})
         assert result == []
@@ -50,7 +49,6 @@ class TestEmptyQueue:
 class TestNoFilter:
     def test_all_messages_consumed(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 3, "exists": True}
         hook.consume_messages.return_value = [
             _make_raw_msg(body="a", delivery_tag=1),
             _make_raw_msg(body="b", delivery_tag=2),
@@ -65,7 +63,6 @@ class TestNoFilter:
 
     def test_result_structure(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 1, "exists": True}
         hook.consume_messages.return_value = [
             _make_raw_msg(body="data", delivery_tag=1, routing_key="my.key",
                           exchange="my_ex", headers={"x-type": "order"}),
@@ -83,7 +80,6 @@ class TestNoFilter:
 class TestDictFilter:
     def test_matching_messages_acked(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 3, "exists": True}
         hook.consume_messages.return_value = [
             _make_raw_msg(body="a", delivery_tag=1, headers={"x-type": "order"}),
             _make_raw_msg(body="b", delivery_tag=2, headers={"x-type": "invoice"}),
@@ -98,7 +94,6 @@ class TestDictFilter:
 
     def test_non_matching_nacked_with_requeue(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 2, "exists": True}
         hook.consume_messages.return_value = [
             _make_raw_msg(body="a", delivery_tag=1, headers={"x-type": "order"}),
             _make_raw_msg(body="b", delivery_tag=2, headers={"x-type": "invoice"}),
@@ -112,7 +107,6 @@ class TestDictFilter:
 
     def test_body_filter(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 2, "exists": True}
         hook.consume_messages.return_value = [
             _make_raw_msg(body=json.dumps({"status": "active"}), delivery_tag=1),
             _make_raw_msg(body=json.dumps({"status": "inactive"}), delivery_tag=2),
@@ -128,7 +122,6 @@ class TestDictFilter:
 class TestCallableFilter:
     def test_callable_matching(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 2, "exists": True}
         hook.consume_messages.return_value = [
             _make_raw_msg(body="important data", delivery_tag=1),
             _make_raw_msg(body="normal data", delivery_tag=2),
@@ -147,52 +140,50 @@ class TestCallableFilter:
 class TestMaxMessages:
     def test_respects_limit(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 5, "exists": True}
+        # consume_messages is now called with max_messages=2 directly,
+        # so it returns at most 2 messages
         hook.consume_messages.return_value = [
-            _make_raw_msg(body=f"msg{i}", delivery_tag=i) for i in range(1, 6)
+            _make_raw_msg(body="msg1", delivery_tag=1),
+            _make_raw_msg(body="msg2", delivery_tag=2),
         ]
         op = RMQConsumeOperator(task_id="t", queue_name="q", max_messages=2)
         result = op.execute(context={})
         assert len(result) == 2
         assert hook.ack.call_count == 2
-        # Remaining 3 messages should be nacked
-        assert hook.nack.call_count == 3
-        for call in hook.nack.call_args_list:
-            assert call.kwargs["requeue"] is True or call[1].get("requeue") is True
+        hook.consume_messages.assert_called_once_with(
+            queue_name="q", max_messages=2, auto_ack=False,
+        )
 
     def test_max_messages_with_filter(self, mock_hook):
         _, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 5, "exists": True}
+        # With max_messages=2, consume_messages returns 2 messages.
+        # Filtering happens on the consumed batch.
         hook.consume_messages.return_value = [
             _make_raw_msg(body="a", delivery_tag=1, headers={"x-type": "order"}),
             _make_raw_msg(body="b", delivery_tag=2, headers={"x-type": "invoice"}),
-            _make_raw_msg(body="c", delivery_tag=3, headers={"x-type": "order"}),
-            _make_raw_msg(body="d", delivery_tag=4, headers={"x-type": "order"}),
-            _make_raw_msg(body="e", delivery_tag=5, headers={"x-type": "order"}),
         ]
         op = RMQConsumeOperator(
             task_id="t", queue_name="q",
             filter_headers={"x-type": "order"}, max_messages=2,
         )
         result = op.execute(context={})
-        assert len(result) == 2
-        assert [m["body"] for m in result] == ["a", "c"]
-        # tag 2 nacked (no match), tags 4,5 nacked (over limit)
-        assert hook.ack.call_count == 2
-        assert hook.nack.call_count == 3
+        assert len(result) == 1
+        assert result[0]["body"] == "a"
+        hook.ack.assert_called_once_with(1)
+        hook.nack.assert_called_once_with(2, requeue=True)
 
 
 class TestConnectionId:
     def test_default_conn_id(self, mock_hook):
         MockHook, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 0, "exists": True}
+        hook.consume_messages.return_value = []
         op = RMQConsumeOperator(task_id="t", queue_name="q")
         op.execute(context={})
         MockHook.assert_called_once_with(rmq_conn_id="rmq_default", qos=None)
 
     def test_custom_conn_id_and_qos(self, mock_hook):
         MockHook, hook = mock_hook
-        hook.queue_info.return_value = {"message_count": 0, "exists": True}
+        hook.consume_messages.return_value = []
         qos = {"prefetch_count": 10}
         op = RMQConsumeOperator(
             task_id="t", queue_name="q", rmq_conn_id="custom", qos=qos,
