@@ -128,10 +128,10 @@ class RMQTrigger(BaseTrigger):
                             return
                         else:
                             await message.nack(requeue=True)
-                            # Sleep then continue polling — the broker may
-                            # re-deliver the same message, but also may deliver
-                            # a different one. This avoids a tight CPU loop.
-                            await asyncio.sleep(self.poll_interval)
+                            # Short delay to avoid a tight CPU loop while
+                            # skipping non-matching messages quickly.
+                            # poll_interval is only used when the queue is empty.
+                            await asyncio.sleep(0.1)
                     else:
                         await message.ack()
                         yield TriggerEvent({

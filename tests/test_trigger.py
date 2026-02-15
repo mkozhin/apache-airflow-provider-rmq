@@ -182,6 +182,41 @@ class TestRunWithFilter:
         non_match_msg.nack.assert_awaited_once_with(requeue=True)
         match_msg.ack.assert_awaited_once()
 
+    @pytest.mark.asyncio
+    async def test_nack_uses_short_delay_not_poll_interval(self):
+        """After NACK, sleep should use a short delay (0.1s), not poll_interval."""
+        poll_interval = 30.0
+        trigger = RMQTrigger(
+            rmq_conn_id="conn", queue_name="q",
+            filter_data={"filter_headers": {"x-type": "order"}},
+            poll_interval=poll_interval,
+        )
+
+        non_match_msg = _make_fake_message(
+            body=b"invoice", headers={"x-type": "invoice"}, routing_key="invoices",
+        )
+        match_msg = _make_fake_message(
+            body=b"order", headers={"x-type": "order"}, routing_key="orders",
+        )
+
+        fake_queue = MagicMock()
+        fake_queue.get = AsyncMock(side_effect=[non_match_msg, match_msg])
+
+        fake_connection = _make_fake_connection(fake_queue)
+        fake_conn_info = FakeAirflowConnection()
+
+        with patch("apache_airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+            mock_aio_pika.connect_robust = AsyncMock(return_value=fake_connection)
+            with patch("apache_airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+                mock_base.get_connection = MagicMock(return_value=fake_conn_info)
+                with patch("apache_airflow_provider_rmq.triggers.rmq.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                    events = await _collect_events(trigger)
+
+        assert len(events) == 1
+        # After NACK the trigger must sleep with the short delay, not poll_interval
+        mock_sleep.assert_awaited_once_with(0.1)
+        non_match_msg.nack.assert_awaited_once_with(requeue=True)
+
 
 # ---------------------------------------------------------------------------
 # Run — empty queue polls
