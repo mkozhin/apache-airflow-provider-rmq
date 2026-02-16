@@ -9,49 +9,31 @@ This pattern involves two DAGs:
 - rmq_pipeline_start: checks lock, publishes lock message, runs pipeline
 - rmq_pipeline_finish: consumes lock message to release the lock
 
-This file shows the "start" DAG. The "finish" DAG would be a separate
-DAG that runs at the end of the pipeline.
+Uses the TaskFlow API (@dag / @task decorators).
 """
 
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 
-from airflow import DAG
-from airflow.operators.python import BranchPythonOperator, PythonOperator
+from airflow.decorators import dag, task
 
 from apache_airflow_provider_rmq.hooks.rmq import RMQHook
 from apache_airflow_provider_rmq.operators.rmq_consume import RMQConsumeOperator
 from apache_airflow_provider_rmq.operators.rmq_management import RMQQueueManagementOperator
 from apache_airflow_provider_rmq.operators.rmq_publish import RMQPublishOperator
 
+log = logging.getLogger("airflow.task")
+
 RMQ_CONN_ID = "rmq_default"
 LOCK_QUEUE = "pipeline_lock"
 
 
-def check_pipeline_lock(**context) -> str:
-    """Check if pipeline is already running by inspecting the lock queue.
-
-    Uses RMQHook.queue_info() to check message count without consuming.
-    Returns the task_id of the next task to execute (branching).
-    """
-    hook = RMQHook(rmq_conn_id=RMQ_CONN_ID)
-    info = hook.queue_info(LOCK_QUEUE)
-    if info.get("exists") and info.get("message_count", 0) > 0:
-        return "pipeline_already_running"
-    return "acquire_lock"
-
-
-def notify_already_running(**context):
-    """Send a notification that pipeline is already running."""
-    print("Pipeline is already running. Skipping this execution.")
-    # In production: send webhook, Slack notification, etc.
-
-
 # --- Start DAG ---
 
-with DAG(
+@dag(
     dag_id="rmq_pipeline_start",
     start_date=datetime(2024, 1, 1),
     schedule=None,
@@ -64,8 +46,8 @@ with DAG(
     2. If empty: publish lock message and proceed
     3. If occupied: notify and skip
     """,
-) as start_dag:
-
+)
+def rmq_pipeline_start():
     ensure_queue = RMQQueueManagementOperator(
         task_id="ensure_lock_queue",
         action="declare_queue",
@@ -74,10 +56,14 @@ with DAG(
         rmq_conn_id=RMQ_CONN_ID,
     )
 
-    check_lock = BranchPythonOperator(
-        task_id="check_lock",
-        python_callable=check_pipeline_lock,
-    )
+    @task.branch
+    def check_lock() -> str:
+        """Check if pipeline is already running by inspecting the lock queue."""
+        hook = RMQHook(rmq_conn_id=RMQ_CONN_ID)
+        info = hook.queue_info(LOCK_QUEUE)
+        if info.get("exists") and info.get("message_count", 0) > 0:
+            return "pipeline_already_running"
+        return "acquire_lock"
 
     acquire_lock = RMQPublishOperator(
         task_id="acquire_lock",
@@ -88,27 +74,31 @@ with DAG(
             "started_at": "{{ ts }}",
             "dag_run_id": "{{ run_id }}",
         }),
-        delivery_mode=2,  # persistent
+        delivery_mode=2,
     )
 
-    already_running = PythonOperator(
-        task_id="pipeline_already_running",
-        python_callable=notify_already_running,
-    )
+    @task
+    def pipeline_already_running():
+        """Notify that pipeline is already running."""
+        log.info("Pipeline is already running. Skipping this execution.")
 
-    do_work = PythonOperator(
-        task_id="do_pipeline_work",
-        python_callable=lambda: print("Running pipeline tasks..."),
-    )
+    @task
+    def do_pipeline_work():
+        """Simulate pipeline work."""
+        log.info("Running pipeline tasks...")
 
-    ensure_queue >> check_lock
-    check_lock >> acquire_lock >> do_work
-    check_lock >> already_running
+    branch = check_lock()
+    ensure_queue >> branch
+    branch >> acquire_lock >> do_pipeline_work()
+    branch >> pipeline_already_running()
 
 
-# --- Finish DAG (separate DAG that runs at the end of the pipeline) ---
+rmq_pipeline_start()
 
-with DAG(
+
+# --- Finish DAG ---
+
+@dag(
     dag_id="rmq_pipeline_finish",
     start_date=datetime(2024, 1, 1),
     schedule=None,
@@ -119,8 +109,8 @@ with DAG(
     Consumes the lock message from the queue, signaling pipeline completion.
     Should be triggered as the last step of the pipeline.
     """,
-) as finish_dag:
-
+)
+def rmq_pipeline_finish():
     release_lock = RMQConsumeOperator(
         task_id="release_lock",
         queue_name=LOCK_QUEUE,
@@ -128,9 +118,14 @@ with DAG(
         max_messages=1,
     )
 
-    done = PythonOperator(
-        task_id="pipeline_complete",
-        python_callable=lambda: print("Pipeline finished. Lock released."),
-    )
+    @task
+    def pipeline_complete(lock_messages: list[dict]):
+        """Log lock info and confirm pipeline completion."""
+        for msg in lock_messages:
+            log.info("Released lock: %s", msg["body"])
+        log.info("Pipeline finished. Lock released.")
 
-    release_lock >> done
+    pipeline_complete(release_lock.output)
+
+
+rmq_pipeline_finish()

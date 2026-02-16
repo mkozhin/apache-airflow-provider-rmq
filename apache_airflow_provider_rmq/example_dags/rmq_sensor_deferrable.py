@@ -3,30 +3,28 @@
 Demonstrates RMQSensor in deferrable mode — the sensor defers
 execution to the triggerer process, freeing the worker slot while
 waiting for a matching RabbitMQ message.
+
+Uses the TaskFlow API (@dag / @task decorators).
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.decorators import dag, task
 
 from apache_airflow_provider_rmq.operators.rmq_management import RMQQueueManagementOperator
 from apache_airflow_provider_rmq.operators.rmq_publish import RMQPublishOperator
 from apache_airflow_provider_rmq.sensors.rmq import RMQSensor
 
+log = logging.getLogger("airflow.task")
+
 RMQ_CONN_ID = "rmq_default"
 QUEUE_NAME = "example_deferred"
 
 
-def process_message(**context):
-    """Process the message received by the sensor."""
-    message = context["ti"].xcom_pull(task_ids="wait_for_order")
-    print(f"Received message: {message}")
-
-
-with DAG(
+@dag(
     dag_id="rmq_sensor_deferrable",
     start_date=datetime(2024, 1, 1),
     schedule=None,
@@ -40,7 +38,8 @@ with DAG(
     **Note:** `filter_callable` is NOT supported in deferrable mode.
     Use `filter_headers` for dict-based filtering instead.
     """,
-) as dag:
+)
+def rmq_sensor_deferrable():
     setup = RMQQueueManagementOperator(
         task_id="setup_queue",
         action="declare_queue",
@@ -78,10 +77,11 @@ with DAG(
         timeout=120,
     )
 
-    process = PythonOperator(
-        task_id="process_message",
-        python_callable=process_message,
-    )
+    @task
+    def process_message(message: dict) -> dict:
+        """Log and process the message received by the sensor."""
+        log.info("Sensor matched message: %s", message)
+        return message
 
     cleanup = RMQQueueManagementOperator(
         task_id="cleanup_queue",
@@ -90,4 +90,9 @@ with DAG(
         rmq_conn_id=RMQ_CONN_ID,
     )
 
-    setup >> publish_noise >> publish_order >> wait_for_order >> process >> cleanup
+    setup >> publish_noise >> publish_order >> wait_for_order
+    processed = process_message(wait_for_order.output)
+    processed >> cleanup
+
+
+rmq_sensor_deferrable()

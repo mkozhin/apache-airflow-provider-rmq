@@ -3,13 +3,15 @@
 Demonstrates RMQPublishOperator with every available parameter:
 headers, priority, delivery_mode, expiration, correlation_id, etc.
 Also shows publishing multiple messages and using exchange routing.
+
+Uses the TaskFlow API (@dag / @task decorators).
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from airflow import DAG
+from airflow.decorators import dag
 
 from apache_airflow_provider_rmq.operators.rmq_management import RMQQueueManagementOperator
 from apache_airflow_provider_rmq.operators.rmq_publish import RMQPublishOperator
@@ -19,7 +21,8 @@ EXCHANGE_NAME = "example_events"
 QUEUE_ORDERS = "example_orders"
 QUEUE_INVOICES = "example_invoices"
 
-with DAG(
+
+@dag(
     dag_id="rmq_publish_advanced",
     start_date=datetime(2024, 1, 1),
     schedule=None,
@@ -32,8 +35,8 @@ with DAG(
     - Publishes a batch of messages at once
     - Cleans up resources
     """,
-) as dag:
-
+)
+def rmq_publish_advanced():
     # --- Infrastructure setup ---
 
     create_exchange = RMQQueueManagementOperator(
@@ -88,10 +91,10 @@ with DAG(
         routing_key="events.orders.created",
         message={"order_id": 123, "amount": 99.99, "currency": "USD"},
         content_type="application/json",
-        delivery_mode=2,  # persistent
+        delivery_mode=2,
         headers={"x-source": "airflow", "x-type": "order", "x-priority": "high"},
         priority=5,
-        expiration="60000",  # TTL 60 seconds
+        expiration="60000",
         correlation_id="corr-abc-123",
         reply_to="reply_queue",
         message_id="msg-order-123",
@@ -118,7 +121,7 @@ with DAG(
     publish_direct = RMQPublishOperator(
         task_id="publish_direct_to_queue",
         rmq_conn_id=RMQ_CONN_ID,
-        queue_name=QUEUE_ORDERS,  # shortcut: sets exchange="" and routing_key=queue_name
+        queue_name=QUEUE_ORDERS,
         message="plain text message body",
     )
 
@@ -175,3 +178,6 @@ with DAG(
     unbind_orders >> delete_orders
     unbind_invoices >> delete_invoices
     [delete_orders, delete_invoices] >> delete_exchange
+
+
+rmq_publish_advanced()

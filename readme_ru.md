@@ -262,6 +262,40 @@ RMQConsumeOperator(
 )
 ```
 
+#### Обработка сообщений через TaskFlow API
+
+`RMQConsumeOperator` возвращает `list[dict]` через XCom. Используйте `consume.output` в `@task`-функции для доступа к каждому сообщению:
+
+```python
+from airflow.decorators import dag, task
+from apache_airflow_provider_rmq.operators.rmq_consume import RMQConsumeOperator
+
+@dag(...)
+def my_pipeline():
+    consume = RMQConsumeOperator(
+        task_id="consume",
+        queue_name="orders",
+        max_messages=50,
+    )
+
+    @task
+    def process_messages(messages: list[dict]) -> list[dict]:
+        results = []
+        for msg in messages:
+            body = msg["body"]          # тело сообщения (str)
+            headers = msg["headers"]    # AMQP заголовки (dict)
+            rk = msg["routing_key"]     # ключ маршрутизации
+            exchange = msg["exchange"]  # обменник-источник
+            log.info("Сообщение: body=%s, headers=%s", body, headers)
+
+            data = json.loads(body)
+            results.append(data)
+        return results
+
+    processed = process_messages(consume.output)
+    processed >> next_task  # передать результаты дальше
+```
+
 ---
 
 ### RMQQueueManagementOperator
@@ -389,6 +423,31 @@ RMQSensor(
 )
 ```
 
+#### Обработка результата сенсора через TaskFlow API
+
+`RMQSensor` возвращает `dict | None` через XCom. Используйте `sensor.output` в `@task`-функции для доступа к найденному сообщению:
+
+```python
+from airflow.decorators import dag, task
+from apache_airflow_provider_rmq.sensors.rmq import RMQSensor
+
+@dag(...)
+def my_pipeline():
+    wait = RMQSensor(
+        task_id="wait_for_event",
+        queue_name="events",
+        filter_headers={"x-type": "payment"},
+        deferrable=True,
+    )
+
+    @task
+    def handle_event(message: dict):
+        log.info("Получено: %s", message)
+        return message
+
+    handle_event(wait.output)
+```
+
 ---
 
 ### RMQTrigger
@@ -428,14 +487,14 @@ RMQSensor(
 
 ## Примеры DAG
 
-Пакет включает несколько примеров DAG в `apache_airflow_provider_rmq/example_dags/`:
+Пакет включает несколько примеров DAG в `apache_airflow_provider_rmq/example_dags/`. Все примеры используют **TaskFlow API** (декораторы `@dag` / `@task`) и демонстрируют **обработку полученных сообщений** в downstream-тасках через XCom.
 
 | DAG | Описание |
 |---|---|
-| `rmq_example_basic` | Простой поток: публикация-ожидание-потребление-очистка |
+| `rmq_example_basic` | Публикация, ожидание, потребление, обработка сообщений, очистка |
 | `rmq_publish_advanced` | Продвинутая публикация со всеми AMQP-свойствами, пакетная отправка, topic exchange |
-| `rmq_consume_with_filters` | Фильтры по заголовкам, по телу, пользовательские функции, QoS |
-| `rmq_sensor_deferrable` | Отложенный сенсор с фильтрацией по заголовкам |
+| `rmq_consume_with_filters` | Фильтры по заголовкам, по телу, пользовательские функции, QoS — с пошаговой обработкой сообщений |
+| `rmq_sensor_deferrable` | Отложенный сенсор с фильтрацией по заголовкам и обработкой сообщений |
 | `rmq_pipeline_start` / `rmq_pipeline_finish` | Паттерн блокировки пайплайна — предотвращение параллельных запусков |
 | `rmq_dlq_setup` | Настройка инфраструктуры Dead Letter Queue с DLX, TTL, exchange-to-exchange привязками |
 
