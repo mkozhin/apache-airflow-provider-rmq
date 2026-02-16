@@ -21,7 +21,7 @@
 
 ## Overview
 
-`apache-airflow-provider-rmq` is a community provider package that enables Apache Airflow to interact with RabbitMQ. It supports:
+`airflow-provider-rmq` is a community provider package that enables Apache Airflow to interact with RabbitMQ. It supports:
 
 - Publishing messages to exchanges and queues
 - Consuming messages with header-based and callable-based filtering
@@ -48,17 +48,17 @@
 ### Install from PyPI
 
 ```bash
-pip install apache-airflow-provider-rmq
+pip install airflow-provider-rmq
 ```
 
 ### Building from source
 
 ```bash
-git clone https://github.com/your-org/apache-airflow-provider-rmq.git
-cd apache-airflow-provider-rmq
+git clone https://github.com/mkozhin/airflow-provider-rmq.git
+cd airflow-provider-rmq
 pip install build
 python -m build
-pip install dist/apache_airflow_provider_rmq-*.whl
+pip install dist/airflow_provider_rmq-*.whl
 ```
 
 ---
@@ -101,7 +101,7 @@ Set `"cert_reqs": "CERT_NONE"` to disable certificate verification (not recommen
 
 ### RMQHook
 
-**Import:** `from apache_airflow_provider_rmq.hooks.rmq import RMQHook`
+**Import:** `from airflow_provider_rmq.hooks.rmq import RMQHook`
 
 Core hook for all RabbitMQ interactions. Uses pika `BlockingConnection` with automatic retry logic (tenacity). The connection is closed automatically when the hook object is garbage-collected, so you do not need to call `close()` manually. Context manager (`with`) is also supported.
 
@@ -141,7 +141,7 @@ Core hook for all RabbitMQ interactions. Uses pika `BlockingConnection` with aut
 #### Usage Example
 
 ```python
-from apache_airflow_provider_rmq.hooks.rmq import RMQHook
+from airflow_provider_rmq.hooks.rmq import RMQHook
 
 hook = RMQHook(rmq_conn_id="rmq_default")
 info = hook.queue_info("my_queue")
@@ -159,7 +159,7 @@ hook.basic_publish(
 
 ### RMQPublishOperator
 
-**Import:** `from apache_airflow_provider_rmq.operators.rmq_publish import RMQPublishOperator`
+**Import:** `from airflow_provider_rmq.operators.rmq_publish import RMQPublishOperator`
 
 Publishes one or more messages to RabbitMQ. Supports strings, dicts (auto-serialized to JSON), and lists.
 
@@ -211,7 +211,7 @@ RMQPublishOperator(
 
 ### RMQConsumeOperator
 
-**Import:** `from apache_airflow_provider_rmq.operators.rmq_consume import RMQConsumeOperator`
+**Import:** `from airflow_provider_rmq.operators.rmq_consume import RMQConsumeOperator`
 
 Consumes messages from a RabbitMQ queue. Matching messages are ACKed and returned via XCom. Non-matching messages are NACKed with `requeue=True`.
 
@@ -268,7 +268,7 @@ RMQConsumeOperator(
 
 ```python
 from airflow.decorators import dag, task
-from apache_airflow_provider_rmq.operators.rmq_consume import RMQConsumeOperator
+from airflow_provider_rmq.operators.rmq_consume import RMQConsumeOperator
 
 @dag(...)
 def my_pipeline():
@@ -300,7 +300,7 @@ def my_pipeline():
 
 ### RMQQueueManagementOperator
 
-**Import:** `from apache_airflow_provider_rmq.operators.rmq_management import RMQQueueManagementOperator`
+**Import:** `from airflow_provider_rmq.operators.rmq_management import RMQQueueManagementOperator`
 
 Performs queue and exchange management operations on RabbitMQ.
 
@@ -372,7 +372,7 @@ RMQQueueManagementOperator(
 
 ### RMQSensor
 
-**Import:** `from apache_airflow_provider_rmq.sensors.rmq import RMQSensor`
+**Import:** `from airflow_provider_rmq.sensors.rmq import RMQSensor`
 
 Waits for a message in a RabbitMQ queue that matches optional filter conditions. Supports classic poke mode and deferrable mode.
 
@@ -429,7 +429,7 @@ RMQSensor(
 
 ```python
 from airflow.decorators import dag, task
-from apache_airflow_provider_rmq.sensors.rmq import RMQSensor
+from airflow_provider_rmq.sensors.rmq import RMQSensor
 
 @dag(...)
 def my_pipeline():
@@ -452,7 +452,7 @@ def my_pipeline():
 
 ### RMQTrigger
 
-**Import:** `from apache_airflow_provider_rmq.triggers.rmq import RMQTrigger`
+**Import:** `from airflow_provider_rmq.triggers.rmq import RMQTrigger`
 
 Async trigger for deferrable sensor mode. Uses `aio_pika` for non-blocking AMQP access. Typically not used directly — `RMQSensor` with `deferrable=True` creates it automatically.
 
@@ -469,7 +469,7 @@ Async trigger for deferrable sensor mode. Uses `aio_pika` for non-blocking AMQP 
 
 ### MessageFilter (Utility)
 
-**Import:** `from apache_airflow_provider_rmq.utils.filters import MessageFilter`
+**Import:** `from airflow_provider_rmq.utils.filters import MessageFilter`
 
 Evaluates whether a RabbitMQ message matches given filter conditions. Used internally by operators and sensors.
 
@@ -487,7 +487,7 @@ Both can be combined (AND logic: both must pass).
 
 ## Example DAGs
 
-The package includes several example DAGs in `apache_airflow_provider_rmq/example_dags/`. All examples use the **TaskFlow API** (`@dag` / `@task` decorators) and demonstrate how to **process consumed messages** in downstream tasks via XCom.
+The package includes several example DAGs in `airflow_provider_rmq/example_dags/`. All examples use the **TaskFlow API** (`@dag` / `@task` decorators) and demonstrate how to **process consumed messages** in downstream tasks via XCom.
 
 | DAG | Description |
 |---|---|
@@ -503,8 +503,8 @@ The package includes several example DAGs in `apache_airflow_provider_rmq/exampl
 ## Repository Structure
 
 ```
-apache-airflow-provider-rmq/
-├── apache_airflow_provider_rmq/
+airflow-provider-rmq/
+├── airflow_provider_rmq/
 │   ├── __init__.py                  # Provider metadata & get_provider_info()
 │   ├── hooks/
 │   │   └── rmq.py                   # RMQHook

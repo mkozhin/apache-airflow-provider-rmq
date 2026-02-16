@@ -6,9 +6,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from apache_airflow_provider_rmq.utils.ssl import build_ssl_context
+from airflow_provider_rmq.utils.ssl import build_ssl_context
 
-SSL_MODULE = "apache_airflow_provider_rmq.utils.ssl.ssl"
+SSL_MODULE = "airflow_provider_rmq.utils.ssl.ssl"
 
 
 class TestDisabled:

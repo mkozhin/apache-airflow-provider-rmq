@@ -6,10 +6,10 @@ from unittest.mock import MagicMock, patch
 import pika
 import pytest
 
-from apache_airflow_provider_rmq.operators.rmq_publish import RMQPublishOperator
+from airflow_provider_rmq.operators.rmq_publish import RMQPublishOperator
 
 
-HOOK_PATH = "apache_airflow_provider_rmq.operators.rmq_publish.RMQHook"
+HOOK_PATH = "airflow_provider_rmq.operators.rmq_publish.RMQHook"
 
 
 @pytest.fixture

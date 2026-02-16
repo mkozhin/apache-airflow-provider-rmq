@@ -21,7 +21,7 @@
 
 ## Обзор
 
-`apache-airflow-provider-rmq` — это провайдер для Apache Airflow, обеспечивающий взаимодействие с RabbitMQ. Возможности:
+`airflow-provider-rmq` — это провайдер для Apache Airflow, обеспечивающий взаимодействие с RabbitMQ. Возможности:
 
 - Публикация сообщений в обменники (exchanges) и очереди
 - Потребление сообщений с фильтрацией по заголовкам и пользовательским функциям
@@ -48,17 +48,17 @@
 ### Установка из PyPI
 
 ```bash
-pip install apache-airflow-provider-rmq
+pip install airflow-provider-rmq
 ```
 
 ### Сборка из исходников
 
 ```bash
-git clone https://github.com/mkozhin/apache-airflow-provider-rmq.git
-cd apache-airflow-provider-rmq
+git clone https://github.com/mkozhin/airflow-provider-rmq.git
+cd airflow-provider-rmq
 pip install build
 python -m build
-pip install dist/apache_airflow_provider_rmq-*.whl
+pip install dist/airflow_provider_rmq-*.whl
 ```
 
 ---
@@ -101,7 +101,7 @@ pip install dist/apache_airflow_provider_rmq-*.whl
 
 ### RMQHook
 
-**Импорт:** `from apache_airflow_provider_rmq.hooks.rmq import RMQHook`
+**Импорт:** `from airflow_provider_rmq.hooks.rmq import RMQHook`
 
 Основной хук для всех взаимодействий с RabbitMQ. Использует pika `BlockingConnection` с автоматической логикой повторных попыток (tenacity). Соединение закрывается автоматически, когда объект хука уничтожается сборщиком мусора, поэтому вызывать `close()` вручную не нужно. Контекстный менеджер (`with`) также поддерживается.
 
@@ -141,7 +141,7 @@ pip install dist/apache_airflow_provider_rmq-*.whl
 #### Пример использования
 
 ```python
-from apache_airflow_provider_rmq.hooks.rmq import RMQHook
+from airflow_provider_rmq.hooks.rmq import RMQHook
 
 hook = RMQHook(rmq_conn_id="rmq_default")
 info = hook.queue_info("my_queue")
@@ -159,7 +159,7 @@ hook.basic_publish(
 
 ### RMQPublishOperator
 
-**Импорт:** `from apache_airflow_provider_rmq.operators.rmq_publish import RMQPublishOperator`
+**Импорт:** `from airflow_provider_rmq.operators.rmq_publish import RMQPublishOperator`
 
 Публикует одно или несколько сообщений в RabbitMQ. Поддерживает строки, словари (автоматическая сериализация в JSON) и списки.
 
@@ -211,7 +211,7 @@ RMQPublishOperator(
 
 ### RMQConsumeOperator
 
-**Импорт:** `from apache_airflow_provider_rmq.operators.rmq_consume import RMQConsumeOperator`
+**Импорт:** `from airflow_provider_rmq.operators.rmq_consume import RMQConsumeOperator`
 
 Потребляет сообщения из очереди RabbitMQ. Подходящие сообщения подтверждаются (ACK) и возвращаются через XCom. Неподходящие отклоняются (NACK) с `requeue=True`.
 
@@ -268,7 +268,7 @@ RMQConsumeOperator(
 
 ```python
 from airflow.decorators import dag, task
-from apache_airflow_provider_rmq.operators.rmq_consume import RMQConsumeOperator
+from airflow_provider_rmq.operators.rmq_consume import RMQConsumeOperator
 
 @dag(...)
 def my_pipeline():
@@ -300,7 +300,7 @@ def my_pipeline():
 
 ### RMQQueueManagementOperator
 
-**Импорт:** `from apache_airflow_provider_rmq.operators.rmq_management import RMQQueueManagementOperator`
+**Импорт:** `from airflow_provider_rmq.operators.rmq_management import RMQQueueManagementOperator`
 
 Выполняет операции управления очередями и обменниками в RabbitMQ.
 
@@ -372,7 +372,7 @@ RMQQueueManagementOperator(
 
 ### RMQSensor
 
-**Импорт:** `from apache_airflow_provider_rmq.sensors.rmq import RMQSensor`
+**Импорт:** `from airflow_provider_rmq.sensors.rmq import RMQSensor`
 
 Ожидает сообщение в очереди RabbitMQ, соответствующее условиям фильтрации. Поддерживает классический poke-режим и отложенный (deferrable) режим.
 
@@ -429,7 +429,7 @@ RMQSensor(
 
 ```python
 from airflow.decorators import dag, task
-from apache_airflow_provider_rmq.sensors.rmq import RMQSensor
+from airflow_provider_rmq.sensors.rmq import RMQSensor
 
 @dag(...)
 def my_pipeline():
@@ -452,7 +452,7 @@ def my_pipeline():
 
 ### RMQTrigger
 
-**Импорт:** `from apache_airflow_provider_rmq.triggers.rmq import RMQTrigger`
+**Импорт:** `from airflow_provider_rmq.triggers.rmq import RMQTrigger`
 
 Асинхронный триггер для отложенного режима сенсора. Использует `aio_pika` для неблокирующего AMQP-доступа. Обычно не используется напрямую — `RMQSensor` с `deferrable=True` создаёт его автоматически.
 
@@ -469,7 +469,7 @@ def my_pipeline():
 
 ### MessageFilter (утилита)
 
-**Импорт:** `from apache_airflow_provider_rmq.utils.filters import MessageFilter`
+**Импорт:** `from airflow_provider_rmq.utils.filters import MessageFilter`
 
 Проверяет, соответствует ли сообщение RabbitMQ заданным условиям фильтрации. Используется внутри операторами и сенсорами.
 
@@ -487,7 +487,7 @@ def my_pipeline():
 
 ## Примеры DAG
 
-Пакет включает несколько примеров DAG в `apache_airflow_provider_rmq/example_dags/`. Все примеры используют **TaskFlow API** (декораторы `@dag` / `@task`) и демонстрируют **обработку полученных сообщений** в downstream-тасках через XCom.
+Пакет включает несколько примеров DAG в `airflow_provider_rmq/example_dags/`. Все примеры используют **TaskFlow API** (декораторы `@dag` / `@task`) и демонстрируют **обработку полученных сообщений** в downstream-тасках через XCom.
 
 | DAG | Описание |
 |---|---|
@@ -503,8 +503,8 @@ def my_pipeline():
 ## Структура репозитория
 
 ```
-apache-airflow-provider-rmq/
-├── apache_airflow_provider_rmq/
+airflow-provider-rmq/
+├── airflow_provider_rmq/
 │   ├── __init__.py                  # Метаданные провайдера и get_provider_info()
 │   ├── hooks/
 │   │   └── rmq.py                   # RMQHook

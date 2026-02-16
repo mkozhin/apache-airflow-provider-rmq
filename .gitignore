@@ -7,3 +7,8 @@ __pycache__
 /CLAUDE.md
 /PLAN.md
 examples/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

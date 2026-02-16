@@ -4,13 +4,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from apache_airflow_provider_rmq.operators.rmq_management import (
+from airflow_provider_rmq.operators.rmq_management import (
     RMQQueueManagementOperator,
     VALID_ACTIONS,
 )
 
 
-HOOK_PATH = "apache_airflow_provider_rmq.operators.rmq_management.RMQHook"
+HOOK_PATH = "airflow_provider_rmq.operators.rmq_management.RMQHook"
 
 
 @pytest.fixture

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from apache_airflow_provider_rmq.utils.filters import MessageFilter
+from airflow_provider_rmq.utils.filters import MessageFilter
 
 
 @dataclass

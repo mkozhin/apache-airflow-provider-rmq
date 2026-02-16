@@ -1,2 +1,0 @@
-[apache_airflow_provider]
-provider_info = apache_airflow_provider_rmq.__init__:get_provider_info

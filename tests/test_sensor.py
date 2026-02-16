@@ -5,11 +5,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from apache_airflow_provider_rmq.sensors.rmq import RMQSensor
+from airflow_provider_rmq.sensors.rmq import RMQSensor
 from tests.conftest import make_method_frame, make_properties
 
 
-HOOK_PATH = "apache_airflow_provider_rmq.sensors.rmq.RMQHook"
+HOOK_PATH = "airflow_provider_rmq.sensors.rmq.RMQHook"
 
 
 def _make_raw_msg(body="msg", delivery_tag=1, routing_key="rk", exchange="", headers=None):
@@ -250,7 +250,7 @@ class TestDeferrable:
         mock_trigger_cls.return_value = mock_trigger_instance
 
         with patch.object(sensor, "defer") as mock_defer:
-            with patch.dict("sys.modules", {"apache_airflow_provider_rmq.triggers.rmq": MagicMock(RMQTrigger=mock_trigger_cls)}):
+            with patch.dict("sys.modules", {"airflow_provider_rmq.triggers.rmq": MagicMock(RMQTrigger=mock_trigger_cls)}):
                 sensor._defer()
                 mock_defer.assert_called_once()
                 call_kwargs = mock_defer.call_args.kwargs

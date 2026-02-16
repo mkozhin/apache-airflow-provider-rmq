@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from apache_airflow_provider_rmq.triggers.rmq import RMQTrigger
+from airflow_provider_rmq.triggers.rmq import RMQTrigger
 from tests.conftest import FakeAirflowConnection
 
 
@@ -21,7 +21,7 @@ class TestSerialize:
             poll_interval=10.0,
         )
         classpath, kwargs = trigger.serialize()
-        assert classpath == "apache_airflow_provider_rmq.triggers.rmq.RMQTrigger"
+        assert classpath == "airflow_provider_rmq.triggers.rmq.RMQTrigger"
         assert kwargs == {
             "rmq_conn_id": "my_conn",
             "queue_name": "my_queue",
@@ -100,9 +100,9 @@ class TestRunNoFilter:
         fake_connection = _make_fake_connection(fake_queue)
         fake_conn_info = FakeAirflowConnection()
 
-        with patch("apache_airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
             mock_aio_pika.connect_robust = AsyncMock(return_value=fake_connection)
-            with patch("apache_airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
                 mock_base.get_connection = MagicMock(return_value=fake_conn_info)
 
                 events = await _collect_events(trigger)
@@ -136,9 +136,9 @@ class TestRunWithFilter:
         fake_connection = _make_fake_connection(fake_queue)
         fake_conn_info = FakeAirflowConnection()
 
-        with patch("apache_airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
             mock_aio_pika.connect_robust = AsyncMock(return_value=fake_connection)
-            with patch("apache_airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
                 mock_base.get_connection = MagicMock(return_value=fake_conn_info)
 
                 events = await _collect_events(trigger)
@@ -169,9 +169,9 @@ class TestRunWithFilter:
         fake_connection = _make_fake_connection(fake_queue)
         fake_conn_info = FakeAirflowConnection()
 
-        with patch("apache_airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
             mock_aio_pika.connect_robust = AsyncMock(return_value=fake_connection)
-            with patch("apache_airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
                 mock_base.get_connection = MagicMock(return_value=fake_conn_info)
 
                 events = await _collect_events(trigger)
@@ -205,11 +205,11 @@ class TestRunWithFilter:
         fake_connection = _make_fake_connection(fake_queue)
         fake_conn_info = FakeAirflowConnection()
 
-        with patch("apache_airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
             mock_aio_pika.connect_robust = AsyncMock(return_value=fake_connection)
-            with patch("apache_airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
                 mock_base.get_connection = MagicMock(return_value=fake_conn_info)
-                with patch("apache_airflow_provider_rmq.triggers.rmq.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                with patch("airflow_provider_rmq.triggers.rmq.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
                     events = await _collect_events(trigger)
 
         assert len(events) == 1
@@ -237,9 +237,9 @@ class TestRunEmptyQueue:
         fake_connection = _make_fake_connection(fake_queue)
         fake_conn_info = FakeAirflowConnection()
 
-        with patch("apache_airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
             mock_aio_pika.connect_robust = AsyncMock(return_value=fake_connection)
-            with patch("apache_airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
                 mock_base.get_connection = MagicMock(return_value=fake_conn_info)
 
                 events = await _collect_events(trigger)
@@ -260,9 +260,9 @@ class TestRunError:
 
         fake_conn_info = FakeAirflowConnection()
 
-        with patch("apache_airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
             mock_aio_pika.connect_robust = AsyncMock(side_effect=ConnectionError("refused"))
-            with patch("apache_airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
                 mock_base.get_connection = MagicMock(return_value=fake_conn_info)
 
                 events = await _collect_events(trigger)
@@ -285,9 +285,9 @@ class TestSSLUrl:
             extra='{"ssl_enabled": true}',
         )
 
-        with patch("apache_airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
             mock_aio_pika.connect_robust = AsyncMock(side_effect=ConnectionError("test"))
-            with patch("apache_airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
                 mock_base.get_connection = MagicMock(return_value=fake_conn_info)
 
                 events = await _collect_events(trigger)
@@ -306,9 +306,9 @@ class TestSSLUrl:
             extra='{"ssl_enabled": true}',
         )
 
-        with patch("apache_airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
             mock_aio_pika.connect_robust = AsyncMock(side_effect=ConnectionError("test"))
-            with patch("apache_airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
                 mock_base.get_connection = MagicMock(return_value=fake_conn_info)
 
                 await _collect_events(trigger)
@@ -324,9 +324,9 @@ class TestSSLUrl:
 
         fake_conn_info = FakeAirflowConnection()
 
-        with patch("apache_airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
             mock_aio_pika.connect_robust = AsyncMock(side_effect=ConnectionError("test"))
-            with patch("apache_airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
                 mock_base.get_connection = MagicMock(return_value=fake_conn_info)
 
                 await _collect_events(trigger)
@@ -347,9 +347,9 @@ class TestUrlEncoding:
             login="user@domain", password="p@ss:word/123",
         )
 
-        with patch("apache_airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
             mock_aio_pika.connect_robust = AsyncMock(side_effect=ConnectionError("test"))
-            with patch("apache_airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
                 mock_base.get_connection = MagicMock(return_value=fake_conn_info)
 
                 await _collect_events(trigger)

@@ -8,11 +8,11 @@ import pika
 import pika.exceptions
 import pytest
 
-from apache_airflow_provider_rmq.hooks.rmq import RMQHook
+from airflow_provider_rmq.hooks.rmq import RMQHook
 from tests.conftest import FakeAirflowConnection, make_message
 
 
-HOOK_MODULE = "apache_airflow_provider_rmq.hooks.rmq"
+HOOK_MODULE = "airflow_provider_rmq.hooks.rmq"
 
 
 @pytest.fixture
@@ -103,7 +103,7 @@ class TestSSLParams:
             })
         )
         with patch.object(RMQHook, "get_connection", return_value=conn):
-            with patch("apache_airflow_provider_rmq.utils.ssl.ssl.create_default_context") as mock_ctx:
+            with patch("airflow_provider_rmq.utils.ssl.ssl.create_default_context") as mock_ctx:
                 ctx_instance = MagicMock(spec=ssl.SSLContext)
                 mock_ctx.return_value = ctx_instance
                 hook = RMQHook()

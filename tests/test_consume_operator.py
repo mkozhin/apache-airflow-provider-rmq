@@ -5,11 +5,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from apache_airflow_provider_rmq.operators.rmq_consume import RMQConsumeOperator
+from airflow_provider_rmq.operators.rmq_consume import RMQConsumeOperator
 from tests.conftest import make_method_frame, make_properties
 
 
-HOOK_PATH = "apache_airflow_provider_rmq.operators.rmq_consume.RMQHook"
+HOOK_PATH = "airflow_provider_rmq.operators.rmq_consume.RMQHook"
 
 
 def _make_raw_msg(body="msg", delivery_tag=1, routing_key="rk", exchange="", headers=None):
