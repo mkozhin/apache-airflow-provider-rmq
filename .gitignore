@@ -12,3 +12,4 @@ examples/
 dist/
 build/
 *.egg-info/
+/.claude/
