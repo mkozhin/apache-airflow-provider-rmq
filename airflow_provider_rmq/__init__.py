@@ -5,7 +5,7 @@ def get_provider_info():
     return {
         "package-name": "airflow-provider-rmq",
         "name": "RabbitMQ",
-        "description": "`RabbitMQ <https://www.rabbitmq.com/>`__\n",
+        "description": "`RabbitMQ <https://www.rabbitmq.com/>`__ provider for Apache Airflow with hooks, operators, sensors, and triggers.",
         "versions": [__version__],
         "integrations": [
             {
