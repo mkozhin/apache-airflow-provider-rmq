@@ -7,9 +7,14 @@ __pycache__
 /CLAUDE.md
 /PLAN.md
 examples/
+.DS_Store
 
 # Build artifacts
 dist/
 build/
 *.egg-info/
+
+# Generated version file (setuptools-scm)
+airflow_provider_rmq/_version.py
 /.claude/
+/docs/plans/

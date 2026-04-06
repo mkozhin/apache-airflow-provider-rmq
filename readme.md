@@ -26,6 +26,7 @@
 - Publishing messages to exchanges and queues
 - Consuming messages with header-based and callable-based filtering
 - Waiting for specific messages with sensors (classic poke and deferrable mode)
+- Deferrable sensor in **pull mode** (periodic polling) and **push mode** (broker-delivered via `basic_consume`) — choose based on latency requirements
 - Full queue and exchange management (declare, delete, purge, bind, unbind)
 - SSL/TLS connections
 - Dead Letter Queue (DLQ) setup helpers
@@ -388,7 +389,8 @@ Waits for a message in a RabbitMQ queue that matches optional filter conditions.
 | `poke_batch_size` | `int` | `100` | No | Max messages to fetch per poke cycle |
 | `poke_interval` | `float` | `60` | No | Seconds between poke attempts (inherited from BaseSensorOperator) |
 | `timeout` | `float` | `604800` | No | Max seconds to wait before failing (inherited from BaseSensorOperator) |
-| `mode` | `str` | `"poke"` | No | `"poke"` or `"reschedule"` (inherited from BaseSensorOperator) |
+| `mode` | `Literal["pull", "push"]` | `"pull"` | No | Trigger delivery mode when `deferrable=True`: `"pull"` = periodic polling, `"push"` = broker-pushed via `basic_consume` |
+| `message_wait_timeout` | `float \| None` | `None` | No | Max seconds to wait for a matching message in push mode. `None` = no limit. Only valid with `mode="push"` |
 
 **Template fields:** `queue_name`
 
@@ -399,6 +401,19 @@ Waits for a message in a RabbitMQ queue that matches optional filter conditions.
 When `deferrable=True`, the sensor defers execution to the Airflow triggerer process using `RMQTrigger`. This frees the worker slot while waiting for a message, which is more resource-efficient for long waits.
 
 **Limitation:** `filter_callable` cannot be used with `deferrable=True` because Python callables cannot be serialized to the triggerer process. Use `filter_headers` instead.
+
+#### Pull vs Push Mode
+
+The `mode` parameter (only relevant with `deferrable=True`) controls how the trigger receives messages:
+
+| | `mode="pull"` (default) | `mode="push"` |
+|---|---|---|
+| Mechanism | Periodic `queue.get()` + sleep | `basic_consume` subscription |
+| Latency | Up to `poll_interval` delay | Instant — broker delivers immediately |
+| Idle cost | Polling even when queue is empty | No activity until message arrives |
+| When to use | Simplicity, predictable behavior | Low-latency requirements, idle queues |
+
+> **RabbitMQ 4.0+ quorum queue note:** non-matching messages are NACKed with `requeue=True`. Quorum queues enforce a default redelivery limit of 20 — after 20 redeliveries the message is dead-lettered or dropped. Applies to both pull and push modes.
 
 #### Usage Example
 
@@ -413,13 +428,24 @@ RMQSensor(
     mode="reschedule",
 )
 
-# Deferrable mode with header filter
+# Deferrable pull mode (default)
 RMQSensor(
     task_id="wait_for_event",
     queue_name="events",
     filter_headers={"x-type": "payment"},
     deferrable=True,
     timeout=600,
+)
+
+# Deferrable push mode — broker delivers instantly, give up after 60 s
+RMQSensor(
+    task_id="wait_for_event_push",
+    queue_name="events",
+    filter_headers={"x-type": "payment"},
+    deferrable=True,
+    mode="push",
+    message_wait_timeout=60,
+    timeout=120,
 )
 ```
 
@@ -461,9 +487,11 @@ Async trigger for deferrable sensor mode. Uses `aio_pika` for non-blocking AMQP 
 | Parameter | Type | Default | Required | Description |
 |---|---|---|---|---|
 | `rmq_conn_id` | `str` | — | **Yes** | Airflow connection ID |
-| `queue_name` | `str` | — | **Yes** | Queue to poll |
+| `queue_name` | `str` | — | **Yes** | Queue to monitor |
 | `filter_data` | `dict \| None` | `None` | No | Serialized filter from `MessageFilter.serialize()` |
-| `poll_interval` | `float` | `5.0` | No | Seconds between polls when queue is empty |
+| `poll_interval` | `float` | `5.0` | No | Seconds between polls when queue is empty (pull mode only) |
+| `mode` | `Literal["pull", "push"]` | `"pull"` | No | Delivery mode: `"pull"` = polling, `"push"` = `basic_consume` |
+| `message_wait_timeout` | `float \| None` | `None` | No | Max seconds to wait in push mode. Actual wait may slightly exceed this due to `basic_cancel` cleanup |
 
 ---
 
@@ -487,14 +515,15 @@ Both can be combined (AND logic: both must pass).
 
 ## Example DAGs
 
-The package includes several example DAGs in `airflow_provider_rmq/example_dags/`. All examples use the **TaskFlow API** (`@dag` / `@task` decorators) and demonstrate how to **process consumed messages** in downstream tasks via XCom.
+The package includes several example DAGs in `docs/example_dags/`. All examples use the **TaskFlow API** (`@dag` / `@task` decorators) and demonstrate how to **process consumed messages** in downstream tasks via XCom.
 
 | DAG | Description |
 |---|---|
 | `rmq_example_basic` | Publish, wait, consume, process messages, cleanup |
 | `rmq_publish_advanced` | Advanced publishing with all AMQP properties, batch messages, topic exchange |
 | `rmq_consume_with_filters` | Header filters, body-path filters, callable filters, QoS — with per-step message processing |
-| `rmq_sensor_deferrable` | Deferrable sensor with header filtering and message processing |
+| `rmq_sensor_deferrable` | Deferrable sensor in pull mode with header filtering and message processing |
+| `rmq_sensor_push` | Deferrable sensor in **push mode** — broker delivers messages instantly via `basic_consume` |
 | `rmq_pipeline_start` / `rmq_pipeline_finish` | Pipeline lock pattern — prevent concurrent executions |
 | `rmq_dlq_setup` | Dead Letter Queue infrastructure setup with DLX, TTL, exchange-to-exchange bindings |
 
@@ -519,8 +548,10 @@ airflow-provider-rmq/
 │   ├── utils/
 │   │   ├── filters.py               # MessageFilter
 │   │   └── ssl.py                   # build_ssl_context()
+├── docs/
 │   └── example_dags/                # Example DAGs
 ├── tests/                           # Unit tests
+├── CHANGELOG.md
 ├── pyproject.toml
 └── readme.md
 ```

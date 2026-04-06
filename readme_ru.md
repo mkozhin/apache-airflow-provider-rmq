@@ -26,6 +26,7 @@
 - Публикация сообщений в обменники (exchanges) и очереди
 - Потребление сообщений с фильтрацией по заголовкам и пользовательским функциям
 - Ожидание конкретных сообщений с помощью сенсоров (классический poke-режим и отложенный/deferrable режим)
+- Отложенный сенсор в режимах **pull** (периодический опрос) и **push** (доставка брокером через `basic_consume`) — выбор зависит от требований к задержке
 - Полное управление очередями и обменниками (создание, удаление, очистка, привязка, отвязка)
 - SSL/TLS подключения
 - Помощник для настройки Dead Letter Queue (DLQ)
@@ -388,7 +389,8 @@ RMQQueueManagementOperator(
 | `poke_batch_size` | `int` | `100` | Нет | Максимум сообщений за один цикл проверки |
 | `poke_interval` | `float` | `60` | Нет | Секунды между проверками (наследуется от BaseSensorOperator) |
 | `timeout` | `float` | `604800` | Нет | Максимум секунд ожидания до ошибки (наследуется от BaseSensorOperator) |
-| `mode` | `str` | `"poke"` | Нет | `"poke"` или `"reschedule"` (наследуется от BaseSensorOperator) |
+| `mode` | `Literal["pull", "push"]` | `"pull"` | Нет | Режим доставки при `deferrable=True`: `"pull"` = периодический опрос, `"push"` = доставка брокером через `basic_consume` |
+| `message_wait_timeout` | `float \| None` | `None` | Нет | Максимум секунд ожидания в push-режиме. `None` = без ограничений. Только с `mode="push"` |
 
 **Шаблонные поля:** `queue_name`
 
@@ -399,6 +401,19 @@ RMQQueueManagementOperator(
 При `deferrable=True` сенсор передаёт выполнение в процесс triggerer через `RMQTrigger`. Это освобождает слот воркера на время ожидания, что более эффективно при длительном ожидании.
 
 **Ограничение:** `filter_callable` нельзя использовать с `deferrable=True`, так как Python-функции не могут быть сериализованы для передачи в triggerer. Используйте `filter_headers` вместо этого.
+
+#### Pull vs Push режим
+
+Параметр `mode` (актуален только при `deferrable=True`) определяет способ получения сообщений триггером:
+
+| | `mode="pull"` (по умолчанию) | `mode="push"` |
+|---|---|---|
+| Механизм | Периодический `queue.get()` + sleep | Подписка через `basic_consume` |
+| Задержка | До `poll_interval` секунд | Мгновенно — брокер доставляет сразу |
+| Idle-нагрузка | Опрос даже при пустой очереди | Нет активности до прихода сообщения |
+| Когда использовать | Простота, предсказуемость | Минимальная задержка, тихие очереди |
+
+> **RabbitMQ 4.0+ quorum queues:** несовпадающие сообщения отклоняются с `requeue=True`. Quorum-очереди ограничивают повторные доставки до 20 по умолчанию — после этого сообщение dead-letter'ится или удаляется. Актуально для обоих режимов.
 
 #### Пример использования
 
@@ -413,13 +428,24 @@ RMQSensor(
     mode="reschedule",
 )
 
-# Отложенный режим с фильтром по заголовкам
+# Отложенный pull-режим (по умолчанию)
 RMQSensor(
     task_id="wait_for_event",
     queue_name="events",
     filter_headers={"x-type": "payment"},
     deferrable=True,
     timeout=600,
+)
+
+# Отложенный push-режим — брокер доставляет мгновенно, таймаут 60 сек
+RMQSensor(
+    task_id="wait_for_event_push",
+    queue_name="events",
+    filter_headers={"x-type": "payment"},
+    deferrable=True,
+    mode="push",
+    message_wait_timeout=60,
+    timeout=120,
 )
 ```
 
@@ -461,9 +487,11 @@ def my_pipeline():
 | Параметр | Тип | По умолчанию | Обязательный | Описание |
 |---|---|---|---|---|
 | `rmq_conn_id` | `str` | — | **Да** | ID подключения Airflow |
-| `queue_name` | `str` | — | **Да** | Очередь для опроса |
+| `queue_name` | `str` | — | **Да** | Очередь для мониторинга |
 | `filter_data` | `dict \| None` | `None` | Нет | Сериализованный фильтр из `MessageFilter.serialize()` |
-| `poll_interval` | `float` | `5.0` | Нет | Секунды между опросами при пустой очереди |
+| `poll_interval` | `float` | `5.0` | Нет | Секунды между опросами при пустой очереди (только pull-режим) |
+| `mode` | `Literal["pull", "push"]` | `"pull"` | Нет | Режим доставки: `"pull"` = опрос, `"push"` = `basic_consume` |
+| `message_wait_timeout` | `float \| None` | `None` | Нет | Максимум секунд ожидания в push-режиме. Фактическое время может быть чуть больше из-за `basic_cancel` |
 
 ---
 
@@ -487,14 +515,15 @@ def my_pipeline():
 
 ## Примеры DAG
 
-Пакет включает несколько примеров DAG в `airflow_provider_rmq/example_dags/`. Все примеры используют **TaskFlow API** (декораторы `@dag` / `@task`) и демонстрируют **обработку полученных сообщений** в downstream-тасках через XCom.
+Пакет включает несколько примеров DAG в `docs/example_dags/`. Все примеры используют **TaskFlow API** (декораторы `@dag` / `@task`) и демонстрируют **обработку полученных сообщений** в downstream-тасках через XCom.
 
 | DAG | Описание |
 |---|---|
 | `rmq_example_basic` | Публикация, ожидание, потребление, обработка сообщений, очистка |
 | `rmq_publish_advanced` | Продвинутая публикация со всеми AMQP-свойствами, пакетная отправка, topic exchange |
 | `rmq_consume_with_filters` | Фильтры по заголовкам, по телу, пользовательские функции, QoS — с пошаговой обработкой сообщений |
-| `rmq_sensor_deferrable` | Отложенный сенсор с фильтрацией по заголовкам и обработкой сообщений |
+| `rmq_sensor_deferrable` | Отложенный сенсор в pull-режиме с фильтрацией по заголовкам и обработкой сообщений |
+| `rmq_sensor_push` | Отложенный сенсор в **push-режиме** — брокер доставляет сообщения мгновенно через `basic_consume` |
 | `rmq_pipeline_start` / `rmq_pipeline_finish` | Паттерн блокировки пайплайна — предотвращение параллельных запусков |
 | `rmq_dlq_setup` | Настройка инфраструктуры Dead Letter Queue с DLX, TTL, exchange-to-exchange привязками |
 
@@ -519,8 +548,10 @@ airflow-provider-rmq/
 │   ├── utils/
 │   │   ├── filters.py               # MessageFilter
 │   │   └── ssl.py                   # build_ssl_context()
+├── docs/
 │   └── example_dags/                # Примеры DAG
 ├── tests/                           # Модульные тесты
+├── CHANGELOG.md
 ├── pyproject.toml
 └── readme.md
 ```

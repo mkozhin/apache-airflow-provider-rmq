@@ -27,6 +27,8 @@ class TestSerialize:
             "queue_name": "my_queue",
             "filter_data": {"filter_headers": {"x-type": "order"}},
             "poll_interval": 10.0,
+            "mode": "pull",
+            "message_wait_timeout": None,
         }
 
     def test_serialize_defaults(self):
@@ -363,3 +365,199 @@ class TestUrlEncoding:
         # The URL structure should still be valid (scheme://user:pass@host:port/vhost)
         assert url.startswith("amqp://")
         assert "@localhost:" in url
+
+# ---------------------------------------------------------------------------
+# Push mode helpers
+# ---------------------------------------------------------------------------
+def _make_push_queue(messages: list):
+    """Fake queue with iterator() yielding the given messages."""
+    class _AsyncIter:
+        def __init__(self, items):
+            self._items = iter(items)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self._items)
+            except StopIteration:
+                raise StopAsyncIteration
+
+    class _IterCM:
+        async def __aenter__(self):
+            return _AsyncIter(messages)
+
+        async def __aexit__(self, *a):
+            return False
+
+    q = MagicMock()
+    q.get = AsyncMock(return_value=None)  # pull path unused
+    q.iterator = MagicMock(side_effect=lambda: _IterCM())
+    return q
+
+
+def _make_blocking_push_queue():
+    """Fake queue whose iterator blocks forever — for timeout tests."""
+    class _BlockingIter:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            await asyncio.sleep(999)  # cancelled by asyncio.wait_for
+
+    class _IterCM:
+        async def __aenter__(self):
+            return _BlockingIter()
+
+        async def __aexit__(self, *a):
+            return False
+
+    q = MagicMock()
+    q.iterator = MagicMock(side_effect=lambda: _IterCM())
+    return q
+
+
+# ---------------------------------------------------------------------------
+# Push mode — no filter
+# ---------------------------------------------------------------------------
+class TestPushModeNoFilter:
+    @pytest.mark.asyncio
+    async def test_first_message_taken(self):
+        trigger = RMQTrigger(rmq_conn_id="conn", queue_name="q", mode="push")
+
+        fake_message = _make_fake_message(
+            body=b"hello", headers={"x-source": "test"}, routing_key="rk", exchange="ex",
+        )
+        fake_queue = _make_push_queue([fake_message])
+        fake_connection = _make_fake_connection(fake_queue)
+        fake_conn_info = FakeAirflowConnection()
+
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+            mock_aio_pika.connect_robust = AsyncMock(return_value=fake_connection)
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+                mock_base.get_connection = MagicMock(return_value=fake_conn_info)
+
+                events = await _collect_events(trigger)
+
+        assert len(events) == 1
+        assert events[0]["status"] == "success"
+        assert events[0]["message"]["body"] == "hello"
+        assert events[0]["message"]["headers"] == {"x-source": "test"}
+        assert events[0]["message"]["routing_key"] == "rk"
+        assert events[0]["message"]["exchange"] == "ex"
+        fake_message.ack.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Push mode — with filter
+# ---------------------------------------------------------------------------
+class TestPushModeWithFilter:
+    @pytest.mark.asyncio
+    async def test_non_matching_nacked_matching_acked(self):
+        trigger = RMQTrigger(
+            rmq_conn_id="conn", queue_name="q",
+            mode="push",
+            filter_data={"filter_headers": {"x-type": "order"}},
+        )
+
+        non_match = _make_fake_message(body=b"noise", headers={"x-type": "analytics"})
+        match = _make_fake_message(body=b"order", headers={"x-type": "order"}, routing_key="orders")
+
+        fake_queue = _make_push_queue([non_match, match])
+        fake_connection = _make_fake_connection(fake_queue)
+        fake_conn_info = FakeAirflowConnection()
+
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+            mock_aio_pika.connect_robust = AsyncMock(return_value=fake_connection)
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+                mock_base.get_connection = MagicMock(return_value=fake_conn_info)
+
+                events = await _collect_events(trigger)
+
+        assert len(events) == 1
+        assert events[0]["status"] == "success"
+        assert events[0]["message"]["body"] == "order"
+        non_match.nack.assert_awaited_once_with(requeue=True)
+        match.ack.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Push mode — timeout
+# ---------------------------------------------------------------------------
+class TestPushModeTimeout:
+    @pytest.mark.asyncio
+    async def test_message_wait_timeout_yields_timeout_event(self):
+        trigger = RMQTrigger(
+            rmq_conn_id="conn", queue_name="q",
+            mode="push",
+            message_wait_timeout=0.05,
+        )
+
+        fake_queue = _make_blocking_push_queue()
+        fake_connection = _make_fake_connection(fake_queue)
+        fake_conn_info = FakeAirflowConnection()
+
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+            mock_aio_pika.connect_robust = AsyncMock(return_value=fake_connection)
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+                mock_base.get_connection = MagicMock(return_value=fake_conn_info)
+
+                events = await _collect_events(trigger)
+
+        assert len(events) == 1
+        assert events[0]["status"] == "timeout"
+
+
+# ---------------------------------------------------------------------------
+# Push mode — serialize / roundtrip
+# ---------------------------------------------------------------------------
+class TestPushModeSerialize:
+    def test_serialize_with_mode_and_message_wait_timeout(self):
+        trigger = RMQTrigger(
+            rmq_conn_id="conn", queue_name="q",
+            mode="push",
+            message_wait_timeout=30.0,
+        )
+        _, kwargs = trigger.serialize()
+        assert kwargs["mode"] == "push"
+        assert kwargs["message_wait_timeout"] == 30.0
+
+    def test_serialize_defaults_mode_pull(self):
+        trigger = RMQTrigger(rmq_conn_id="conn", queue_name="q")
+        _, kwargs = trigger.serialize()
+        assert kwargs["mode"] == "pull"
+        assert kwargs["message_wait_timeout"] is None
+
+    def test_roundtrip_push_mode(self):
+        original = RMQTrigger(
+            rmq_conn_id="conn", queue_name="q",
+            mode="push",
+            message_wait_timeout=15.0,
+        )
+        _, kwargs = original.serialize()
+        restored = RMQTrigger(**kwargs)
+        assert restored.mode == "push"
+        assert restored.message_wait_timeout == 15.0
+
+
+# ---------------------------------------------------------------------------
+# Push mode — connection error
+# ---------------------------------------------------------------------------
+class TestPushModeError:
+    @pytest.mark.asyncio
+    async def test_connection_error_yields_error_event(self):
+        trigger = RMQTrigger(rmq_conn_id="conn", queue_name="q", mode="push")
+
+        fake_conn_info = FakeAirflowConnection()
+
+        with patch("airflow_provider_rmq.triggers.rmq.aio_pika") as mock_aio_pika:
+            mock_aio_pika.connect_robust = AsyncMock(side_effect=ConnectionError("refused"))
+            with patch("airflow_provider_rmq.triggers.rmq.BaseHook") as mock_base:
+                mock_base.get_connection = MagicMock(return_value=fake_conn_info)
+
+                events = await _collect_events(trigger)
+
+        assert len(events) == 1
+        assert events[0]["status"] == "error"
+        assert "refused" in events[0]["error"]

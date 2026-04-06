@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Literal, Sequence
 
 import pika.exceptions
 from airflow.sensors.base import BaseSensorOperator
@@ -22,6 +22,13 @@ class RMQSensor(BaseSensorOperator):
         ``filter_callable`` is **not supported** in deferrable mode (``deferrable=True``)
         because callables cannot be serialized to the triggerer process. Use dict-based
         ``filter_headers`` instead, or set ``deferrable=False``.
+
+    .. note::
+        When using quorum queues (default in RabbitMQ 4.x clusters), non-matching
+        messages are NACKed with requeue=True. RabbitMQ 4.0+ enforces a default
+        redelivery limit of 20 for quorum queues — after 20 redeliveries the message
+        is dead-lettered or dropped. If heavy filtering is expected, consider using
+        a dedicated queue or increasing the delivery-limit policy.
     """
 
     template_fields: Sequence[str] = ("queue_name",)
@@ -36,23 +43,26 @@ class RMQSensor(BaseSensorOperator):
         filter_callable: Callable[[Any, str], bool] | None = None,
         deferrable: bool = False,
         poke_batch_size: int = 100,
+        mode: Literal["pull", "push"] = "pull",
+        message_wait_timeout: float | None = None,
         **kwargs,
     ):
         """Create a new RMQSensor.
 
         :param queue_name: Name of the RabbitMQ queue to monitor.
-        :type queue_name: str
         :param rmq_conn_id: Airflow connection ID for RabbitMQ.
-        :type rmq_conn_id: str
         :param filter_headers: Dict of AMQP headers that a message must match.
-        :type filter_headers: dict[str, Any] | None
         :param filter_callable: Callable ``(properties, body) -> bool`` for custom filtering.
             Not supported with ``deferrable=True``.
-        :type filter_callable: Callable[[Any, str], bool] | None
         :param deferrable: Run in deferrable mode using :class:`RMQTrigger`.
-        :type deferrable: bool
         :param poke_batch_size: Max messages to fetch per poke cycle.
-        :type poke_batch_size: int
+        :param mode: Delivery mode for deferrable trigger — ``"pull"`` (periodic polling,
+            default) or ``"push"`` (broker-pushed via ``basic_consume``). Only used when
+            ``deferrable=True``.
+        :param message_wait_timeout: Maximum seconds to wait for a matching message in push
+            mode. ``None`` means wait indefinitely. Only valid when ``mode="push"`` and
+            ``deferrable=True``. Note: actual wait may slightly exceed this value while the
+            AMQP consumer is cancelled gracefully.
         """
         super().__init__(**kwargs)
         self.queue_name = queue_name
@@ -61,6 +71,8 @@ class RMQSensor(BaseSensorOperator):
         self.filter_callable = filter_callable
         self.deferrable = deferrable
         self.poke_batch_size = poke_batch_size
+        self.mode = mode
+        self.message_wait_timeout = message_wait_timeout
         self._return_value: dict | None = None
 
         if self.deferrable and self.filter_callable is not None:
@@ -68,6 +80,12 @@ class RMQSensor(BaseSensorOperator):
                 "Callable-based filters are not supported in deferrable mode "
                 "because they cannot be serialized to the triggerer process. "
                 "Use dict-based filter_headers instead, or disable deferrable mode."
+            )
+
+        if self.message_wait_timeout is not None and self.mode != "push":
+            raise ValueError(
+                "message_wait_timeout is only supported in push mode (mode='push'). "
+                "Either set mode='push' or remove message_wait_timeout."
             )
 
     def execute(self, context: Any) -> dict | None:
@@ -87,6 +105,8 @@ class RMQSensor(BaseSensorOperator):
                 rmq_conn_id=self.rmq_conn_id,
                 queue_name=self.queue_name,
                 filter_data=msg_filter.serialize(),
+                mode=self.mode,
+                message_wait_timeout=self.message_wait_timeout,
             ),
             method_name="execute_complete",
         )
@@ -94,6 +114,10 @@ class RMQSensor(BaseSensorOperator):
     def execute_complete(self, context: Any, event: dict[str, Any]) -> dict | None:
         if event.get("status") == "success":
             return event.get("message")
+        if event.get("status") == "timeout":
+            raise RuntimeError(
+                f"RMQSensor timed out waiting for message in queue '{self.queue_name}'"
+            )
         raise RuntimeError(f"RMQTrigger failed: {event.get('error', 'unknown error')}")
 
     def poke(self, context: Any) -> bool:

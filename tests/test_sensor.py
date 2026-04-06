@@ -297,3 +297,48 @@ class TestExecuteComplete:
         event = {"status": "unknown"}
         with pytest.raises(RuntimeError, match="unknown error"):
             sensor.execute_complete(context={}, event=event)
+
+# ---------------------------------------------------------------------------
+# Deferrable mode — new mode / message_wait_timeout parameters
+# ---------------------------------------------------------------------------
+class TestDeferrableNewParams:
+    def test_defer_passes_mode_push_to_trigger(self):
+        from airflow_provider_rmq.triggers.rmq import RMQTrigger
+
+        sensor = RMQSensor(
+            task_id="t", queue_name="orders", poke_interval=1,
+            deferrable=True, mode="push",
+        )
+        with patch.object(sensor, "defer") as mock_defer:
+            sensor._defer()
+
+        mock_defer.assert_called_once()
+        trigger = mock_defer.call_args.kwargs["trigger"]
+        assert isinstance(trigger, RMQTrigger)
+        assert trigger.mode == "push"
+
+    def test_defer_passes_message_wait_timeout_to_trigger(self):
+        from airflow_provider_rmq.triggers.rmq import RMQTrigger
+
+        sensor = RMQSensor(
+            task_id="t", queue_name="orders", poke_interval=1,
+            deferrable=True, mode="push", message_wait_timeout=30.0,
+        )
+        with patch.object(sensor, "defer") as mock_defer:
+            sensor._defer()
+
+        trigger = mock_defer.call_args.kwargs["trigger"]
+        assert isinstance(trigger, RMQTrigger)
+        assert trigger.message_wait_timeout == 30.0
+
+    def test_execute_complete_timeout_raises_runtime_error(self):
+        sensor = RMQSensor(task_id="t", queue_name="orders", poke_interval=1)
+        with pytest.raises(RuntimeError, match="timed out.*orders"):
+            sensor.execute_complete(context={}, event={"status": "timeout"})
+
+    def test_message_wait_timeout_with_pull_mode_raises_value_error(self):
+        with pytest.raises(ValueError, match="message_wait_timeout is only supported in push mode"):
+            RMQSensor(
+                task_id="t", queue_name="q", poke_interval=1,
+                mode="pull", message_wait_timeout=10,
+            )
