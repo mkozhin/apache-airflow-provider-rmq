@@ -160,6 +160,18 @@ class TestExchangeActions:
 
 
 # ---------------------------------------------------------------------------
+# Template fields
+# ---------------------------------------------------------------------------
+class TestTemplateFields:
+    def test_arguments_in_template_fields(self):
+        assert "arguments" in RMQQueueManagementOperator.template_fields
+
+    def test_required_fields_in_template_fields(self):
+        for field in ("queue_name", "exchange_name", "routing_key", "arguments"):
+            assert field in RMQQueueManagementOperator.template_fields
+
+
+# ---------------------------------------------------------------------------
 # Connection
 # ---------------------------------------------------------------------------
 class TestConnection:

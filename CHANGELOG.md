@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.1
+
+- **Fixed:** `arguments` added to `template_fields` in `RMQQueueManagementOperator` — `x-*` arguments (e.g., `alternate-exchange`, DLQ settings) now support Jinja templates and XCom
+
 ## v1.2.0
 
 - **Added:** `message_wait_timeout` added to `template_fields` in `RMQSensor` — the parameter now supports Jinja templates and XCom, enabling dynamic timeouts computed at runtime (e.g., remaining seconds until end of business hours)

@@ -28,7 +28,7 @@ class RMQQueueManagementOperator(BaseOperator):
     - Exchange: declare_exchange, delete_exchange, bind_exchange, unbind_exchange
     """
 
-    template_fields: Sequence[str] = ("queue_name", "exchange_name", "routing_key")
+    template_fields: Sequence[str] = ("queue_name", "exchange_name", "routing_key", "arguments")
     ui_color = "#ff6600"
 
     def __init__(

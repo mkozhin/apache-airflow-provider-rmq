@@ -324,7 +324,7 @@ Performs queue and exchange management operations on RabbitMQ.
 | `arguments` | `dict \| None` | `None` | No | Optional `x-*` arguments (e.g., DLQ settings) |
 | `source_exchange` | `str \| None` | `None` | Conditional | Source exchange for exchange bind/unbind |
 
-**Template fields:** `queue_name`, `exchange_name`, `routing_key`
+**Template fields:** `queue_name`, `exchange_name`, `routing_key`, `arguments`
 
 #### Supported Actions
 
