@@ -331,9 +331,10 @@ class TestDeferrableNewParams:
         assert isinstance(trigger, RMQTrigger)
         assert trigger.message_wait_timeout == 30.0
 
-    def test_execute_complete_timeout_raises_runtime_error(self):
+    def test_execute_complete_timeout_raises_skip_exception(self):
+        from airflow.exceptions import AirflowSkipException
         sensor = RMQSensor(task_id="t", queue_name="orders", poke_interval=1)
-        with pytest.raises(RuntimeError, match="timed out.*orders"):
+        with pytest.raises(AirflowSkipException, match="orders"):
             sensor.execute_complete(context={}, event={"status": "timeout"})
 
     def test_message_wait_timeout_with_pull_mode_raises_value_error(self):
@@ -342,3 +343,65 @@ class TestDeferrableNewParams:
                 task_id="t", queue_name="q", poke_interval=1,
                 mode="pull", message_wait_timeout=10,
             )
+
+
+# ---------------------------------------------------------------------------
+# template_fields — message_wait_timeout поддерживает Jinja / XCom
+# ---------------------------------------------------------------------------
+class TestTemplateFields:
+    def test_message_wait_timeout_in_template_fields(self):
+        assert "message_wait_timeout" in RMQSensor.template_fields
+
+    def test_queue_name_still_in_template_fields(self):
+        assert "queue_name" in RMQSensor.template_fields
+
+    def test_defer_coerces_string_timeout_to_float(self):
+        """После рендера Jinja message_wait_timeout приходит строкой — _defer() должен кастовать."""
+        from airflow_provider_rmq.triggers.rmq import RMQTrigger
+
+        sensor = RMQSensor(
+            task_id="t", queue_name="q", poke_interval=1,
+            deferrable=True, mode="push",
+        )
+        # Имитируем результат рендера Jinja-шаблона: строка вместо float
+        sensor.message_wait_timeout = "3600.0"
+
+        with patch.object(sensor, "defer") as mock_defer:
+            sensor._defer()
+
+        trigger = mock_defer.call_args.kwargs["trigger"]
+        assert isinstance(trigger, RMQTrigger)
+        assert trigger.message_wait_timeout == 3600.0
+        assert isinstance(trigger.message_wait_timeout, float)
+
+    def test_defer_coerces_integer_string_timeout(self):
+        """Целочисленные строки тоже кастуются корректно."""
+        from airflow_provider_rmq.triggers.rmq import RMQTrigger
+
+        sensor = RMQSensor(
+            task_id="t", queue_name="q", poke_interval=1,
+            deferrable=True, mode="push",
+        )
+        sensor.message_wait_timeout = "1800"
+
+        with patch.object(sensor, "defer") as mock_defer:
+            sensor._defer()
+
+        trigger = mock_defer.call_args.kwargs["trigger"]
+        assert trigger.message_wait_timeout == 1800.0
+
+    def test_defer_none_timeout_stays_none(self):
+        """None не трогается — отсутствие таймаута."""
+        from airflow_provider_rmq.triggers.rmq import RMQTrigger
+
+        sensor = RMQSensor(
+            task_id="t", queue_name="q", poke_interval=1,
+            deferrable=True, mode="push",
+        )
+        assert sensor.message_wait_timeout is None
+
+        with patch.object(sensor, "defer") as mock_defer:
+            sensor._defer()
+
+        trigger = mock_defer.call_args.kwargs["trigger"]
+        assert trigger.message_wait_timeout is None

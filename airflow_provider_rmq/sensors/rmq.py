@@ -4,6 +4,7 @@ import logging
 from typing import Any, Callable, Literal, Sequence
 
 import pika.exceptions
+from airflow.exceptions import AirflowSkipException
 from airflow.sensors.base import BaseSensorOperator
 
 from airflow_provider_rmq.hooks.rmq import RMQHook
@@ -31,7 +32,7 @@ class RMQSensor(BaseSensorOperator):
         a dedicated queue or increasing the delivery-limit policy.
     """
 
-    template_fields: Sequence[str] = ("queue_name",)
+    template_fields: Sequence[str] = ("queue_name", "message_wait_timeout")
     ui_color = "#ff6600"
 
     def __init__(
@@ -100,13 +101,14 @@ class RMQSensor(BaseSensorOperator):
 
         msg_filter = MessageFilter(filter_headers=self.filter_headers)
 
+        timeout = float(self.message_wait_timeout) if self.message_wait_timeout is not None else None
         self.defer(
             trigger=RMQTrigger(
                 rmq_conn_id=self.rmq_conn_id,
                 queue_name=self.queue_name,
                 filter_data=msg_filter.serialize(),
                 mode=self.mode,
-                message_wait_timeout=self.message_wait_timeout,
+                message_wait_timeout=timeout,
             ),
             method_name="execute_complete",
         )
@@ -115,7 +117,7 @@ class RMQSensor(BaseSensorOperator):
         if event.get("status") == "success":
             return event.get("message")
         if event.get("status") == "timeout":
-            raise RuntimeError(
+            raise AirflowSkipException(
                 f"RMQSensor timed out waiting for message in queue '{self.queue_name}'"
             )
         raise RuntimeError(f"RMQTrigger failed: {event.get('error', 'unknown error')}")

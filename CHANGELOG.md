@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.0
+
+- **Added:** `message_wait_timeout` added to `template_fields` in `RMQSensor` — the parameter now supports Jinja templates and XCom, enabling dynamic timeouts computed at runtime (e.g., remaining seconds until end of business hours)
+- **Changed:** `RMQSensor` timeout behaviour — when `message_wait_timeout` expires, `AirflowSkipException` is now raised instead of `RuntimeError`. The task is marked **SKIPPED** rather than FAILED, and `on_failure_callback` is not triggered. This is a **breaking change** for code that caught `RuntimeError` on timeout
+
 ## v1.1.0
 
 - **Added:** `mode="push"` in `RMQSensor` and `RMQTrigger` — deferrable sensor now supports push delivery via AMQP `basic_consume`. The broker delivers messages instantly as they arrive, eliminating polling delay. Default remains `mode="pull"` (backwards compatible)

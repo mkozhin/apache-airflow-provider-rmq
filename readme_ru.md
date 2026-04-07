@@ -390,9 +390,9 @@ RMQQueueManagementOperator(
 | `poke_interval` | `float` | `60` | Нет | Секунды между проверками (наследуется от BaseSensorOperator) |
 | `timeout` | `float` | `604800` | Нет | Максимум секунд ожидания до ошибки (наследуется от BaseSensorOperator) |
 | `mode` | `Literal["pull", "push"]` | `"pull"` | Нет | Режим доставки при `deferrable=True`: `"pull"` = периодический опрос, `"push"` = доставка брокером через `basic_consume` |
-| `message_wait_timeout` | `float \| None` | `None` | Нет | Максимум секунд ожидания в push-режиме. `None` = без ограничений. Только с `mode="push"` |
+| `message_wait_timeout` | `float \| None` | `None` | Нет | Максимум секунд ожидания в push-режиме. `None` = без ограничений. Только с `mode="push"`. Поддерживает Jinja-шаблоны и XCom |
 
-**Шаблонные поля:** `queue_name`
+**Шаблонные поля:** `queue_name`, `message_wait_timeout`
 
 **Возвращает:** `dict | None` — подошедшее сообщение с ключами: `body`, `headers`, `routing_key`, `exchange`
 
@@ -412,6 +412,8 @@ RMQQueueManagementOperator(
 | Задержка | До `poll_interval` секунд | Мгновенно — брокер доставляет сразу |
 | Idle-нагрузка | Опрос даже при пустой очереди | Нет активности до прихода сообщения |
 | Когда использовать | Простота, предсказуемость | Минимальная задержка, тихие очереди |
+
+> **Поведение при таймауте:** когда `message_wait_timeout` истекает, сенсор бросает `AirflowSkipException` — таск помечается как **SKIPPED** (не FAILED), downstream-таски пропускаются. `on_failure_callback` не вызывается. Это делает `message_wait_timeout` безопасным для плановых остановок (например, конец рабочего дня) без ложных алертов.
 
 > **RabbitMQ 4.0+ quorum queues:** несовпадающие сообщения отклоняются с `requeue=True`. Quorum-очереди ограничивают повторные доставки до 20 по умолчанию — после этого сообщение dead-letter'ится или удаляется. Актуально для обоих режимов.
 
@@ -446,6 +448,15 @@ RMQSensor(
     mode="push",
     message_wait_timeout=60,
     timeout=120,
+)
+
+# Динамический таймаут через XCom — например, сколько секунд осталось до конца рабочего дня
+RMQSensor(
+    task_id="wait_for_message",
+    queue_name="events",
+    deferrable=True,
+    mode="push",
+    message_wait_timeout="{{ ti.xcom_pull(task_ids='compute_timeout') }}",
 )
 ```
 

@@ -390,9 +390,9 @@ Waits for a message in a RabbitMQ queue that matches optional filter conditions.
 | `poke_interval` | `float` | `60` | No | Seconds between poke attempts (inherited from BaseSensorOperator) |
 | `timeout` | `float` | `604800` | No | Max seconds to wait before failing (inherited from BaseSensorOperator) |
 | `mode` | `Literal["pull", "push"]` | `"pull"` | No | Trigger delivery mode when `deferrable=True`: `"pull"` = periodic polling, `"push"` = broker-pushed via `basic_consume` |
-| `message_wait_timeout` | `float \| None` | `None` | No | Max seconds to wait for a matching message in push mode. `None` = no limit. Only valid with `mode="push"` |
+| `message_wait_timeout` | `float \| None` | `None` | No | Max seconds to wait for a matching message in push mode. `None` = no limit. Only valid with `mode="push"`. Supports Jinja templates and XCom |
 
-**Template fields:** `queue_name`
+**Template fields:** `queue_name`, `message_wait_timeout`
 
 **Returns:** `dict | None` — matched message with keys: `body`, `headers`, `routing_key`, `exchange`
 
@@ -412,6 +412,8 @@ The `mode` parameter (only relevant with `deferrable=True`) controls how the tri
 | Latency | Up to `poll_interval` delay | Instant — broker delivers immediately |
 | Idle cost | Polling even when queue is empty | No activity until message arrives |
 | When to use | Simplicity, predictable behavior | Low-latency requirements, idle queues |
+
+> **Timeout behaviour:** when `message_wait_timeout` expires, the sensor raises `AirflowSkipException` — the task is marked **SKIPPED** (not FAILED) and downstream tasks are skipped. No `on_failure_callback` is triggered. This makes it safe to use `message_wait_timeout` for planned stops (e.g., end of business hours) without generating false alerts.
 
 > **RabbitMQ 4.0+ quorum queue note:** non-matching messages are NACKed with `requeue=True`. Quorum queues enforce a default redelivery limit of 20 — after 20 redeliveries the message is dead-lettered or dropped. Applies to both pull and push modes.
 
@@ -446,6 +448,15 @@ RMQSensor(
     mode="push",
     message_wait_timeout=60,
     timeout=120,
+)
+
+# Dynamic timeout via XCom — e.g. compute remaining seconds until end of business hours
+RMQSensor(
+    task_id="wait_for_message",
+    queue_name="events",
+    deferrable=True,
+    mode="push",
+    message_wait_timeout="{{ ti.xcom_pull(task_ids='compute_timeout') }}",
 )
 ```
 
