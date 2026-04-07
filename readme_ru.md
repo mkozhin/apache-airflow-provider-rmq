@@ -324,7 +324,7 @@ def my_pipeline():
 | `arguments` | `dict \| None` | `None` | Нет | Дополнительные `x-*` аргументы (например, настройки DLQ) |
 | `source_exchange` | `str \| None` | `None` | Условно | Обменник-источник для exchange bind/unbind |
 
-**Шаблонные поля:** `queue_name`, `exchange_name`, `routing_key`
+**Шаблонные поля:** `queue_name`, `exchange_name`, `routing_key`, `arguments`
 
 #### Поддерживаемые действия
 
